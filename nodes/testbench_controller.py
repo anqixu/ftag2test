@@ -9,7 +9,7 @@ import getopt
 class TestbenchController():
   def __init__(self):
     self.alive = False
-    # TODO
+    # TODO: spawn user keyboard command thread
     
   def spin(self):
     rospy.spin()

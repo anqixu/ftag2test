@@ -1,0 +1,4 @@
+<launch>
+  <param name="/rosbridge/port" value="9090" />
+  <node pkg="rosbridge_server" type="rosbridge.py" name="rosbridge" />
+</launch>
