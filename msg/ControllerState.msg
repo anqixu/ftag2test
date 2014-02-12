@@ -7,7 +7,7 @@ int32 frameID
 
 float64[] encoded_phases # empty == end of sequence
 
-std_msgs/String fsm
+string fsm
 int32 num_detections
 int32 num_images
 int32 num_poses

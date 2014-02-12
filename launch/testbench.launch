@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="ftag2test" type="testbench_controller.py" name="testbench_controller" args="" output="screen">
+    <param name="ptu_port" value="/dev/ttyACM2" />
+  </node>
+</launch>
