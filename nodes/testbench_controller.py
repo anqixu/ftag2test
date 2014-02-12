@@ -167,6 +167,7 @@ class TestbenchController():
 
   def processAck(self, msg):
     if self.alive and self.fsm == State.WAIT_FOR_DISPLAYER:
+      rospy.sleep(0.3)
       self.num_detections = 0
       self.latest_frame_id = -1
       if self.timeout is not None:
@@ -228,7 +229,7 @@ class TestbenchController():
           cmd = '%d %d;\n' % (self.curr_pose[0], self.curr_pose[1])
           #rospy.loginfo('Sent commands to ptu: ' + cmd) # TODO: remove when working
           self.ptu.write(cmd)
-          rospy.sleep(1.0)
+          rospy.sleep(1.2)
           random.shuffle(self.tagImages)
           self.num_images = 0
           self.fsm = State.REQUEST_DISPLAYER
