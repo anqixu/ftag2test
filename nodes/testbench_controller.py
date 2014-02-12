@@ -229,7 +229,7 @@ class TestbenchController():
           cmd = '%d %d;\n' % (self.curr_pose[0], self.curr_pose[1])
           #rospy.loginfo('Sent commands to ptu: ' + cmd) # TODO: remove when working
           self.ptu.write(cmd)
-          rospy.sleep(1.2)
+          rospy.sleep(3.0)
           random.shuffle(self.tagImages)
           self.num_images = 0
           self.fsm = State.REQUEST_DISPLAYER
