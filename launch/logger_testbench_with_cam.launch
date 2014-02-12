@@ -1,0 +1,21 @@
+<launch>
+
+<arg name="bag.name" default="/localdata/anqixu/ftag2testbench"/>
+<arg name="bag.topics"
+     default="
+/freq_testbench/frame_img/compressed
+/freq_testbench/marker_img/compressed
+/freq_testbench/marker_info
+/freq_testbench/phase_stats
+/new_tag
+/new_tag_ack
+/rosout
+/rosout_agg
+/testbench_controller/state
+/tf"/>
+
+  <node pkg="rosbag" type="record" name="record" args="--output-prefix=$(arg bag.name)  $(arg bag.topics) ">
+</node>
+
+</launch>
+

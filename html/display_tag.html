@@ -1,13 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-<!--link rel="stylesheet" type="text/css" href="mystyle.css"-->
- <style type="text/css">
-  /* Just some nice colors */
-  body {background: #FFF; color: #FFF; font-size: large;
-    text-shadow: white 0.2em 0.2em 0.2em}
-  a:link, a:visited {color: inherit; text-decoration: underline}
-  a:hover {text-shadow: white 0 0 0.2em}
+<style type="text/css">
+  body {background: #FFF; color: #FFF;}
 
   /* Vertical centering: make div as large as viewport and use table layout */
   div.container {top: 0; left: 0; width: 100%; height: 100%;
@@ -32,8 +27,8 @@
   </style>
 <meta charset="utf-8" />
 
-<script type="text/javascript" src="http://cdn.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
-<script type="text/javascript" src="http://cdn.robotwebtools.org/roslibjs/current/roslib.min.js"></script>
+<script type="text/javascript" src="eventemitter2.min.js"></script>
+<script type="text/javascript" src="roslib.min.js"></script>
 
 <script type="text/javascript" type="text/javascript">
   // Connecting to ROS
@@ -45,18 +40,6 @@
   // Publishing a Topic
   // ------------------
 
- /* var testMsg = new ROSLIB.Topic({
-    ros : ros,
-    name : '/test',
-    messageType : 'std_msgs/String'
-  });
-
-  var ack = new ROSLIB.Topic({
-    ros : ros,
-    name : '/test_ack',
-    messageType : 'std_msgs/String'
-  });
-*/
   var acknowledge = new ROSLIB.Topic({
     ros : ros,
     name : '/new_tag_ack',
@@ -71,32 +54,30 @@
 
   var path = "/home/thalassa/anqixu/Dropbox/ftag2/ml_tag_displayer/images/";
 
-  function Slideshow(file_name, size, rot){
+  function sleep(ms) {
+    var t = new Date().getTime();
+    while (t + ms >= new Date().getTime()) {}
+  }
+
+  function showImage(file_name, size, rot) {
     document.getElementById("img").width = size;
     document.getElementById("img").height = size;
     document.getElementById("img").src=path+file_name;
     document.getElementById("img").style.MozTransform = "rotate(" + rot + "deg)";                      
     document.getElementById("img").style.webkitTransform = "rotate(" + rot + "deg)";
-    //imgToMiddle("img");
   }
 
-
   listener.subscribe(function(message) {
-    console.log('Received message on ' + listener.name + ': ' + "Filename: " + message.filename + "\t Rotation: " + message.rotation);
-    //console.log('Filename ' + displaytag.filename);
+    //console.log('Received message on ' + listener.name + ': ' + "Filename: " + message.filename + "\t Rotation: " + message.rotation);
+    showImage(message.filename, 500, message.rotation);
+    sleep(100);
     acknowledge.publish(message);
-    Slideshow(message.filename,500,message.rotation);
   });
 
 </script>
-
 </head>
 
 <body>
-
-<div class="container">
-   <p >This is vertically &amp; horizontally centered. <img id="img" alt="[image of a sheep]" class="displayed" src="/home/dacocp/image1.jpg"> 
-  </p></div>
-
+<div class="container"><p>This is vertically &amp; horizontally centered. <img id="img" class="displayed" src="white.png"></p></div>
 </body>
 </html>
