@@ -82,9 +82,9 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES ftag2test2
-#  CATKIN_DEPENDS geometry_msgs roscpp rospy sensor_msgs std_msgs
+  INCLUDE_DIRS include
+#  LIBRARIES ftag2test
+  CATKIN_DEPENDS geometry_msgs roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )
 
@@ -100,19 +100,19 @@ include_directories(
 )
 
 ## Declare a cpp library
-# add_library(ftag2test2
-#   src/${PROJECT_NAME}/ftag2test2.cpp
+# add_library(ftag2test
+#   src/${PROJECT_NAME}/ftag2test.cpp
 # )
 
 ## Declare a cpp executable
-# add_executable(ftag2test2_node src/ftag2test2_node.cpp)
+# add_executable(ftag2test_node src/ftag2test_node.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-# add_dependencies(ftag2test2_node ftag2test2_generate_messages_cpp)
+# add_dependencies(ftag2test_node ftag2test_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(ftag2test2_node
+# target_link_libraries(ftag2test_node
 #   ${catkin_LIBRARIES}
 # )
 
@@ -131,18 +131,18 @@ include_directories(
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS ftag2test2 ftag2test2_node
+# install(TARGETS ftag2test ftag2test_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 
 ## Mark cpp header files for installation
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-#   FILES_MATCHING PATTERN "*.h"
-#   PATTERN ".svn" EXCLUDE
-# )
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN ".svn" EXCLUDE
+)
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 # install(FILES
@@ -156,7 +156,7 @@ include_directories(
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_ftag2test2.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_ftag2test.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

@@ -66,7 +66,7 @@ class TestbenchController():
     
   def spin(self):
     while not rospy.is_shutdown():
-      if self.fsm == State.IDLE or self.fsm == State.WAIT_FOR_DISPLAYER:
+      if self.fsm == State.IDLE or self.fsm == State.WAIT_FOR_DISPLAYER or self.fsm == State.WAIT_FOR_FIRST_DETECTION or self.fsm == State.WAIT_FOR_N_DETECTIONS:
         rospy.sleep(0.00001)
         
       elif self.fsm == State.REPOSITION_PAN_TILT:
@@ -86,17 +86,6 @@ class TestbenchController():
         # TODO: publish request to displayer
 
         self.fsm = State.WAIT_FOR_DISPLAYER
-
-      elif 
-        
-  # - Wait for first detection from freq_testbench
-  # - Publish encoded tag phases, along with frame ID of first detection
-  # - Wait for N detections
-  # - Publishes empty, along with frame ID of last accepted detection
-  # - Return to (*) if haven't reached T iterations, else return to (#); and if all poses have been iterated over, then idle
-
-
-        
 
 
 class Usage(Exception):
