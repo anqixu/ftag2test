@@ -69,7 +69,7 @@
     messageType : 'ftag2test/DisplayTag'
   });
 
-  var path = "/home/dacocp/Dropbox/ftag2/ml_tag_displayer/images/";
+  var path = "/home/thalassa/anqixu/Dropbox/ftag2/ml_tag_displayer/images/";
 
   function Slideshow(file_name, size, rot){
     document.getElementById("img").width = size;
@@ -85,7 +85,7 @@
     console.log('Received message on ' + listener.name + ': ' + "Filename: " + message.filename + "\t Rotation: " + message.rotation);
     //console.log('Filename ' + displaytag.filename);
     acknowledge.publish(message);
-    Slideshow(message.filename,600,message.rotation);
+    Slideshow(message.filename,500,message.rotation);
   });
 
 </script>
