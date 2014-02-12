@@ -112,7 +112,17 @@ class TestbenchController():
     
     self.tag_sub = rospy.Subscriber('/freq_testbench/marker_info', FreqTBMarkerInfo, self.processDetection)
 
-    self.ptu_port = rospy.get_param('~ptu_port', '/dev/ttyACM0')
+    self.ptu_port = '/dev/ttyACM0'
+    if rospy.has_param('~ptu_port'):
+      self.ptu_port = rospy.get_param('~ptu_port')
+    else:
+      acm_ports = []
+      for dev_file in os.listdir('/dev'):
+        if dev_file.find('ttyACM') >= 0:
+          acm_ports.append('/dev/' + dev_file)
+      if len(acm_ports) > 0:
+        acm_ports.sort()
+        self.ptu_port = acm_ports[0]
     
     self.ptu = serial.Serial(port=self.ptu_port, baudrate=115200)
     self.ptu.open()
