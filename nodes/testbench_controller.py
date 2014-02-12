@@ -11,10 +11,10 @@ import threading
 import serial
 
 
-panAngles = [-15, -10, -5, -2, 0, 2, 5, 10, 15]
-tiltAngles = [-5, 0, 5]
-maxNumDetections = 5
-maxNumImages = 5
+panAngles = [-20, -10, 0, 10, 20]
+tiltAngles = [-12, -6, 0, 6, 12]
+maxNumDetections = 6
+maxNumImages = 20
 
 
 class _Getch:
@@ -124,8 +124,8 @@ class TestbenchController():
     self.ui_thread = threading.Thread(target=self.ui_loop)
     self.ui_thread.start()
     
-    self.alive = True
-    self.fsm = State.REPOSITION_PAN_TILT
+    self.alive = False
+    self.fsm = State.IDLE
 
 
   def shutdown(self):
@@ -171,7 +171,7 @@ class TestbenchController():
       self.latest_frame_id = -1
       if self.timeout is not None:
         self.timeout.shutdown()
-      self.timeout = rospy.Timer(rospy.Duration(0.5*maxNumDetections), self.detectionTimeout, True)
+      self.timeout = rospy.Timer(rospy.Duration(0.45*maxNumDetections), self.detectionTimeout, True)
       self.fsm = State.WAIT_FOR_FIRST_DETECTION
 
 
@@ -228,7 +228,7 @@ class TestbenchController():
           cmd = '%d %d;\n' % (self.curr_pose[0], self.curr_pose[1])
           #rospy.loginfo('Sent commands to ptu: ' + cmd) # TODO: remove when working
           self.ptu.write(cmd)
-          rospy.sleep(0.5)
+          rospy.sleep(1.0)
           random.shuffle(self.tagImages)
           self.num_images = 0
           self.fsm = State.REQUEST_DISPLAYER
