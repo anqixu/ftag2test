@@ -64,7 +64,7 @@
 
   listener.subscribe(function(message) {
     //console.log('Received message on ' + listener.name + ': ' + "Filename: " + message.filename + "\t Rotation: " + message.rotation);
-    showImage(message.filename, 500, message.rotation);
+    showImage(message.filename, 399, message.rotation);
     acknowledge.publish(message);
   });
 
