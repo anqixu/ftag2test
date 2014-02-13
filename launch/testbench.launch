@@ -23,7 +23,6 @@
   <node name="rosapi" pkg="rosapi" type="rosapi" />
   
   <node pkg="ftag2test" type="testbench_controller.py" name="testbench_controller" args="" output="screen">
-    <param name="ptu_port" value="/dev/ttyACM1" />
   </node>
   
   <include file="$(find ftag2test)/launch/logger_testbench_with_cam.launch"/>
