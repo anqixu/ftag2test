@@ -2,7 +2,7 @@
 <html>
 <head>
 <style type="text/css">
-  body {background: #FFF; color: #FFF;}
+  body {background: #FFF; color: #000;}
 
   /* Vertical centering: make div as large as viewport and use table layout */
   div.container {top: 0; left: 0; width: 100%; height: 100%;
@@ -60,6 +60,7 @@
     document.getElementById("img").src=path+file_name;
     document.getElementById("img").style.MozTransform = "rotate(" + rot + "deg)";                      
     document.getElementById("img").style.webkitTransform = "rotate(" + rot + "deg)";
+    document.getElementById("tag_name").innerHTML=file_name;
   }
 
   listener.subscribe(function(message) {
@@ -72,6 +73,13 @@
 </head>
 
 <body>
-<div class="container"><p>This is vertically &amp; horizontally centered. <img id="img" class="displayed" src="white.png"></p></div>
+  <div id="panel">
+    <div id="tag_name">
+      TAG FILENAME
+    </div>
+  </div>
+  <div class="container">
+    <p> <img id="img" class="displayed" src="white.png"> </p>
+  </div>
 </body>
 </html>

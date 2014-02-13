@@ -177,7 +177,7 @@ class TestbenchController():
 
   def processAck(self, msg):
     if self.alive and self.fsm == State.WAIT_FOR_DISPLAYER:
-      rospy.sleep(0.4)
+      rospy.sleep(0.8)
       self.num_detections = 0
       self.latest_frame_id = -1
       if self.timeout is not None:

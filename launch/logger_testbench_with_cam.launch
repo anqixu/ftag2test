@@ -3,7 +3,7 @@
 <arg name="bag.name" default="/localdata/anqixu/ftag2testbench"/>
 <arg name="bag.topics"
      default="
-/freq_testbench/frame_img/compressed
+/freq_testbench/frame_img
 /freq_testbench/marker_img/compressed
 /freq_testbench/marker_info
 /new_tag

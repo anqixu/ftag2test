@@ -26,7 +26,7 @@
     <param name="ptu_port" value="/dev/ttyACM1" />
   </node>
   
-  <include file="$(find ftag2test)/launch/logger_testbench_no_cam.launch"/>
+  <include file="$(find ftag2test)/launch/logger_testbench_with_cam.launch"/>
   
   <include file="$(find ftag2)/launch/freq_test.launch"/>
 </launch>
