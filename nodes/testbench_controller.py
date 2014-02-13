@@ -11,9 +11,9 @@ import threading
 import serial
 
 
-panAngles = [-20, -10, 0, 10, 20]
+panAngles = [-12, -6, 0, 6, 12]
 tiltAngles = [-12, -6, 0, 6, 12]
-maxNumDetections = 6
+maxNumDetections = 10
 maxNumImages = 20
 
 
@@ -214,6 +214,7 @@ class TestbenchController():
         self.latest_frame_id = msg.frameID
         if self.num_detections >= maxNumDetections:
           self.fsm = State.REPORT_FINAL_DETECTION
+
 
   def detectionTimeout(self, data):
     if self.fsm == State.WAIT_FOR_FIRST_DETECTION or self.fsm == State.WAIT_FOR_N_DETECTIONS:
