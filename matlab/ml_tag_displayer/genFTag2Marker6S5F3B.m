@@ -18,6 +18,9 @@ function [tag, phases] = genFTag2Marker6S5F3B(phase_bits, tagWidthPx)
 phase_ids = phase_bits(:, :, 1)*4 + phase_bits(:, :, 2)*2 + phase_bits(:, :, 3);
 phases = phase_ids*360/8;
 
+phases(4:6, :) = 360 - phases(1:3, :);
+phases(phases >= 360) = phases(phases >= 360) - 360;
+
 N = tagWidthPx;
 x = linspace(0, 360, N);
 rays = zeros(size(phases, 1), N);

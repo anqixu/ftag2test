@@ -15,7 +15,7 @@ import serial
 
 panAngles = [-12, -6, 0, 6, 12]
 tiltAngles = [-12, -6, 0, 6, 12]
-maxNumDetections = 10
+maxNumDetections = 10000
 maxNumImages = 20
 
 ptu_sleep_s = 5.0 # wait for wobble to settle

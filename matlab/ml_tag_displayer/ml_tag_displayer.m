@@ -30,6 +30,7 @@ function ml_tag_displayer(NUM_TAGS)
         [tag, phases] = genFTag2Marker6S5F3B(phase_bits, 1200);
         %imshow(tag);
         
+        %{
         for i=1:6
             for j=1:5
                 binvector(3) = phase_bits(i,j,1);
@@ -37,11 +38,13 @@ function ml_tag_displayer(NUM_TAGS)
                 binvector(1) = phase_bits(i,j,3);
                 decimals(i,j) = bi2de(binvector);
             end
-        end
-        decimals;
+       end
+        %}
+  
+        decimals = phases/(360/8);
         phases;
                     
-        file_name = sprintf('images/ftag2_6S5F3B_');
+        file_name = sprintf('../../html/images/ftag2_6S5F3B_');
         for i=1:6
             for j=1:5
                 file_name = sprintf('%s%i',file_name,decimals(i,j));
