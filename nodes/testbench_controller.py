@@ -108,7 +108,7 @@ class TestbenchController():
     self.tagImages = [];
     imagePath = roslib.packages.get_pkg_dir('ftag2test') + '/html/images/'
     for f in os.listdir(imagePath):
-      if f.find('ftag2_6S5F3B') >= 0 and f.find('.png') >= 0:
+      if f.find('FTag2MarkerV2') >= 0 and f.find('.png') >= 0:
         self.tagImages.append(f)
     if len(self.tagImages) <= 0:
       error('Could not find any images in: ' + imagePath)
@@ -204,7 +204,7 @@ class TestbenchController():
         self.num_detections = 1
         
         n = self.curr_image.filename
-        encoded_phases = [int(v)*45 for v in n[13:18] + n[19:24] + n[25:30] + n[31:36] + n[37:42] + n[43:48]]
+        encoded_phases = [int(v)*45 for v in n[14:19] + n[20:25] + n[26:31] + n[32:37] + n[38:43] + n[44:49]]
         
         stateMsg = ControllerState()
         stateMsg.pan_angle = self.curr_pose[0]
