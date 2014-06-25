@@ -2,7 +2,6 @@
 import rospy
 import roslib
 from ftag2test.msg import ControllerState, DisplayTag
-from ftag2.msg import FreqTBMarkerInfo
 
 import random
 import os
@@ -13,14 +12,7 @@ import threading
 import serial
 
 
-panAngles = [-12, -6, 0, 6, 12]
-tiltAngles = [-12, -6, 0, 6, 12]
-maxNumDetections = 10000
-maxNumImages = 20
-
-ptu_sleep_s = 5.0 # wait for wobble to settle
-displayer_sleep_m = 0.8
-detection_timeout_s = 0.45
+display_delay_sec = 5
 
 
 class _Getch:
@@ -68,24 +60,10 @@ class Enum(set):
     raise AttributeError
 
 
-State = Enum(["IDLE", "REPOSITION_PAN_TILT", "REQUEST_DISPLAYER", "WAIT_FOR_DISPLAYER", "WAIT_FOR_FIRST_DETECTION", "WAIT_FOR_N_DETECTIONS", "REPORT_FINAL_DETECTION"])
+State = Enum(["IDLE", "REQUEST_DISPLAYER", "WAIT_FOR_DISPLAYER_ACK", "WAIT_FOR_DELAY"])
 
 
 class TestbenchController():
-  # FSM Logic:
-  #
-  # - Select grid-sampled pan angle, grid-sampled tilt angle (#)
-  # - Requests pan-tilt unit to re-position
-  # - Sleep for a bit
-  # - Select random tag name, random rotation angle (*)
-  # - Request displayer to display random tag name
-  # - Wait for displayer to respond
-  # - Wait for first detection from freq_testbench
-  # - Publish encoded tag phases, along with frame ID of first detection
-  # - Wait for N detections
-  # - Publishes empty, along with frame ID of last accepted detection
-  # - Return to (*) if haven't reached T iterations, else return to (#); and if all poses have been iterated over, then idle
-          
   def __init__(self):
     self.displayer_pub = rospy.Publisher('/new_tag', DisplayTag)
     
@@ -94,16 +72,11 @@ class TestbenchController():
     rospy.init_node('testbench_controller')
     
     self.alive = False
-    self.num_detections = 0
-    self.num_images = 0
-    self.num_poses = 0
     self.fsm = State.IDLE
-    self.curr_pose = None
     self.curr_image = DisplayTag()
-    self.ptu = None
     self.ui_thread = None
-    self.latest_frame_id = 0
     self.timeout = None
+    self.num_images = 0
     
     self.tagImages = [];
     imagePath = roslib.packages.get_pkg_dir('ftag2test') + '/html/images/'
@@ -113,46 +86,20 @@ class TestbenchController():
     if len(self.tagImages) <= 0:
       error('Could not find any images in: ' + imagePath)
     
-    self.PTAngles = list(itertools.product(panAngles, tiltAngles))
-    
-    global maxNumImages
-    maxNumImages = min(len(self.tagImages), maxNumImages)
-
     rospy.on_shutdown(self.shutdown)
 
     self.ack_sub = rospy.Subscriber('/new_tag_ack', DisplayTag, self.processAck)
-    
-    self.tag_sub = rospy.Subscriber('/freq_testbench/marker_info', FreqTBMarkerInfo, self.processDetection)
 
-    self.ptu_port = '/dev/ttyACM0'
-    if rospy.has_param('~ptu_port'):
-      self.ptu_port = rospy.get_param('~ptu_port')
-    else:
-      acm_ports = []
-      for dev_file in os.listdir('/dev'):
-        if dev_file.find('ttyACM') >= 0:
-          acm_ports.append('/dev/' + dev_file)
-      if len(acm_ports) > 0:
-        acm_ports.sort()
-        self.ptu_port = acm_ports[0]
-    
-    self.ptu = serial.Serial(port=self.ptu_port, baudrate=115200)
-    self.ptu.open()
-    if not self.ptu.isOpen():
-      error('Could not open serial port: ' + self.ptu_port)
-    else:
-      rospy.loginfo('Opened Arduino on serial port: ' + self.ptu_port)
-  
     self.ui_thread = threading.Thread(target=self.ui_loop)
     self.ui_thread.start()
     
     self.alive = False
     self.fsm = State.IDLE
+    rospy.loginfo('Node started; press SPACEBAR to start')
 
 
   def shutdown(self):
     try:
-      self.ptu.close()
       self.ui_thread.join()
     except AttributeError:
       pass
@@ -166,9 +113,9 @@ class TestbenchController():
       if c == 'x' or c == 'X':
         rospy.signal_shutdown('User pressed X')
       elif c == ' ':
-        if self.alive and not self.fsm == State.IDLE:
+        if self.alive or (not self.fsm == State.IDLE):
           self.alive = False
-          self.fsm = State.REPORT_FINAL_DETECTION
+          self.fsm = State.IDLE
           rospy.loginfo('STOPPED')
         else:
           self.reset()
@@ -177,61 +124,24 @@ class TestbenchController():
 
   def reset(self):
     random.shuffle(self.tagImages)
-    self.num_detections = 0
     self.num_images = 0
-    self.num_poses = 0
-    self.curr_pose = None
     self.curr_image = DisplayTag()
-    self.latest_frame_id = 0
-    self.fsm = State.REPOSITION_PAN_TILT
+    self.fsm = State.REQUEST_DISPLAYER
     self.alive = True
 
 
   def processAck(self, msg):
-    if self.alive and self.fsm == State.WAIT_FOR_DISPLAYER:
-      rospy.sleep(displayer_sleep_m)
+    if self.alive and self.fsm == State.WAIT_FOR_DISPLAYER_ACK:
       self.num_detections = 0
-      self.latest_frame_id = -1
       if self.timeout is not None:
         self.timeout.shutdown()
-      self.timeout = rospy.Timer(rospy.Duration(detection_timeout_s*maxNumDetections), self.detectionTimeout, True)
-      self.fsm = State.WAIT_FOR_FIRST_DETECTION
+      self.timeout = rospy.Timer(rospy.Duration(display_delay_sec), self.delayTimeout, True)
+      self.fsm = State.WAIT_FOR_DELAY
 
 
-  def processDetection(self, msg):
-    if self.alive:
-      if self.fsm == State.WAIT_FOR_FIRST_DETECTION:
-        self.num_detections = 1
-        
-        n = self.curr_image.filename
-        encoded_phases = [int(v)*45 for v in n[14:19] + n[20:25] + n[26:31] + n[32:37] + n[38:43] + n[44:49]]
-        
-        stateMsg = ControllerState()
-        stateMsg.pan_angle = self.curr_pose[0]
-        stateMsg.tilt_angle = self.curr_pose[1]
-        stateMsg.displayer = self.curr_image
-        stateMsg.frameID = msg.frameID
-        stateMsg.encoded_phases = encoded_phases
-        stateMsg.fsm = str(self.fsm)
-        stateMsg.num_detections = self.num_detections
-        stateMsg.num_images = self.num_images
-        stateMsg.num_poses = self.num_poses
-        self.state_pub.publish(stateMsg)
-        
-        self.latest_frame_id = msg.frameID
-        self.fsm = State.WAIT_FOR_N_DETECTIONS
-        
-      elif self.fsm == State.WAIT_FOR_N_DETECTIONS:
-        self.num_detections += 1
-        self.latest_frame_id = msg.frameID
-        if self.num_detections >= maxNumDetections:
-          self.fsm = State.REPORT_FINAL_DETECTION
-
-
-  def detectionTimeout(self, data):
-    if self.fsm == State.WAIT_FOR_FIRST_DETECTION or self.fsm == State.WAIT_FOR_N_DETECTIONS:
-      rospy.loginfo('Timed out') # TODO: remove after working
-      self.fsm = State.REPORT_FINAL_DETECTION
+  def delayTimeout(self, data):
+    if self.fsm == State.WAIT_FOR_DELAY:
+      self.fsm = State.REQUEST_DISPLAYER
     if self.timeout is not None: # TODO: need mutex
       self.timeout.shutdown()
       self.timeout = None
@@ -239,56 +149,32 @@ class TestbenchController():
     
   def spin(self):
     while not rospy.is_shutdown():
-      if self.fsm == State.IDLE or self.fsm == State.WAIT_FOR_DISPLAYER or self.fsm == State.WAIT_FOR_FIRST_DETECTION or self.fsm == State.WAIT_FOR_N_DETECTIONS:
+      if self.fsm == State.IDLE or self.fsm == State.WAIT_FOR_DISPLAYER_ACK or self.fsm == State.WAIT_FOR_DELAY:
         rospy.sleep(0.0001)
-        
-      elif self.fsm == State.REPOSITION_PAN_TILT:
-        self.num_poses += 1
-        if self.num_poses >= len(self.PTAngles):
-          self.fsm = State.IDLE
-          self.num_poses = 0
-        else:
-          self.curr_pose = self.PTAngles[self.num_poses]
-          cmd = '%d %d;\n' % (self.curr_pose[0], self.curr_pose[1])
-          #rospy.loginfo('Sent commands to ptu: ' + cmd) # TODO: remove when working
-          self.ptu.write(cmd)
-          rospy.sleep(ptu_sleep_s)
-          random.shuffle(self.tagImages)
-          self.num_images = 0
-          self.fsm = State.REQUEST_DISPLAYER
 
       elif self.fsm == State.REQUEST_DISPLAYER:
-        if self.num_images >= maxNumImages:
-          self.fsm = State.REPOSITION_PAN_TILT
-        else:
-          self.curr_image.filename = self.tagImages[self.num_images]
-          self.curr_image.rotation = random.random() * 360.0
-          self.num_images += 1
-          self.displayer_pub.publish(self.curr_image)
-          self.fsm = State.WAIT_FOR_DISPLAYER
-        
-      elif self.fsm == State.REPORT_FINAL_DETECTION:
-        if self.timeout is not None:
-          self.timeout.shutdown()
-          self.timeout = None
+        self.curr_image.filename = self.tagImages[self.num_images]
+        self.curr_image.rotation = random.random() * 360.0
+        self.num_images += 1
+        self.displayer_pub.publish(self.curr_image)
+        self.fsm = State.WAIT_FOR_DISPLAYER_ACK
 
         stateMsg = ControllerState()
-        stateMsg.pan_angle = self.curr_pose[0]
-        stateMsg.tilt_angle = self.curr_pose[1]
         stateMsg.displayer = self.curr_image
-        stateMsg.frameID = self.latest_frame_id
+        stateMsg.frameID = -1
         stateMsg.encoded_phases = []
         stateMsg.fsm = str(self.fsm)
-        stateMsg.num_detections = self.num_detections
+        stateMsg.num_detections = 0
         stateMsg.num_images = self.num_images
-        stateMsg.num_poses = self.num_poses
+        stateMsg.num_poses = 0
         self.state_pub.publish(stateMsg)
-        
+
+      else:
         if self.alive:
           self.fsm = State.REQUEST_DISPLAYER
         else:
           self.fsm = State.IDLE
-          rospy.loginfo('Waiting for user to reposition camera and press SPACEBAR')
+          rospy.loginfo('Press SPACEBAR to start')
 
 
 class Usage(Exception):
