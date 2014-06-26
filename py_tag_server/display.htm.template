@@ -31,19 +31,24 @@
   function transformImage(size, rot) {
     document.getElementById("img").width = size;
     document.getElementById("img").height = size;
+    document.getElementById("img").src="images/TEMPLATE_TAG_FILENAME";
     document.getElementById("img").style.MozTransform = "rotate(" + rot + "deg)";
     document.getElementById("img").style.webkitTransform = "rotate(" + rot + "deg)";
+  }
+  
+  function update() {
+	transformImage(600, TEMPLATE_IMAGE_ROTATION);
   }
 </script>
 </head>
 
-<body onload="transformImage(399, TEMPLATE_IMAGE_ROTATION);">
+<body onload="setTimeout(update, 300)">
   <div id="panel">
     &nbsp;
     <div id="tag_name" align="center">TEMPLATE_TAG_FILENAME</div>
   </div>
   <div class="container">
-    <p><img id="img" class="displayed" src="images/robots.jpg"></p>
+    <p><img id="img" class="displayed"></p>
   </div>
 </body>
 </html>
