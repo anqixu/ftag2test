@@ -125,6 +125,17 @@ class GantryController:
     if linear:
       cmd = '%s,S' % cmd
     self.write(cmd + '\r')
+
+  def readlines(self):
+    reading = True
+    while reading:
+      self.gantry_mutex.acquire()
+      line = self.gantry.readline()
+      self.gantry_mutex.release()
+      if line and len(line) > 0:
+        print '<<', line
+      else:
+        reading = False
     
   def getPos(self):
     self.write('W2\r')
