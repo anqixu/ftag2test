@@ -25,7 +25,7 @@ class GantryController:
   # TODO: if this code doesn't work, but we can connect, typoe SER (SERIAL) to see current config
   
   # NOTE: max baud rate is 38400
-  def __init__(self, device, baud=38400, timeout=0.1, verbose=True, is_sim=False):
+  def __init__(self, device='/dev/ttyS4', baud=38400, timeout=0.1, verbose=True, is_sim=False):
     self.alive = True
     self.gantry = None
     self.gantry_mutex = threading.Lock()
@@ -149,7 +149,7 @@ class GantryController:
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='GantryController Tester')
-  parser.add_argument("-d", "--device", type=str, required=False, help="Path to serial device", default='/dev/ttyUSB0')
+  parser.add_argument("-d", "--device", type=str, required=False, help="Path to serial device", default='/dev/ttyS4')
   parser.add_argument('-s', '--sim', required=False, help="Simulate commands without connecting to serial device", action='store_true')
   args = parser.parse_args()
   
