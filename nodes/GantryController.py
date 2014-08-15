@@ -6,6 +6,13 @@ import threading
 import time
 
 
+# NOTE: joint 4, joint 6 have about ~360' (6 / yaw =-360 to 0, 4 / roll =0 to 360, 5 / pitch=0 to 360)
+# NOTE: pitch default should be -9.8 ('JOINT 5 -9.8')
+# TODO: set speed command, consider SPEED 40 (40% of max speed), but vibration takes ~1 sec
+
+# Instructions:
+# 1. turn surge protector on
+# 2. on the pendant, press F1, F, F, F, F1, F1, to go into DEVICE mode
 class GantryController:
   baseRotMaxDeg = 175
   shoulderRotMatDeg = 90
@@ -34,8 +41,9 @@ class GantryController:
         raise Exception('Failed to connect to %s' % port)
       print 'Gantry connected on %s' % device
       
-      self.read_thread = threading.Thread(target=self.readLoop)
-      self.read_thread.start()
+      # TODO: re-enable read_thread
+      #self.read_thread = threading.Thread(target=self.readLoop)
+      #self.read_thread.start()
       
   def __enter__(self):
     return self
@@ -76,7 +84,13 @@ class GantryController:
       self.gantry.write(cmd)
       self.gantry_mutex.release()
   
-  def disablePendant(self):
+  def initGantry(self):
+    self.write('NOHELP\r') # disables auto-complete
+    self.write('ONPOWER\r') # blocks until motors come on
+    # self.write('STATUS\r') # TODO: ideally need to read from gantry, and check for NOT HOMED, then self.write('HOME\r') / self.write('RUN CAL\r') + self.write('@ZERO\r')
+    self.write('RUN INIT_SYS\r') # initialize gantry data, e.g. units
+  
+  def disablePendant(self): # TODO: deprecated
     self.write('PENDANT OFF\r')
   
   def home(self):
@@ -86,9 +100,9 @@ class GantryController:
   def estop(self):
     self.write('ABORT\r')
 
-  # TODO: are these in mm or inches?
+  # in mm
   # linear: if False, move using joint interpolation
-  def moveRel(self, dx=0.0, dy=0.0, dz=0.0, linear=False):
+  def moveRel(self, dx=0.0, dy=0.0, dz=0.0, linear=False): # TODO: also implement MI
     cmd = 'JOG %.4f,%.4f,%.4f' % (dx, dy, dz)
     if linear:
       cmd = '%s,S' % cmd
@@ -114,10 +128,17 @@ class GantryController:
     
   def getPos(self):
     self.write('W2\r')
+    reading = True
+    while reading:
+      self.gantry_mutex.acquire()
+      line = self.gantry.readline()
+      self.gantry_mutex.release()
+      if line and len(line) > 0:
+        print '<<', line
+      else:
+        reading = False
+      
     #self.readlines(11) # TODO: if we have loop going, then no need to poll
-    
-  def circle(self, center, start, arclen, rad, spd=1.0):
-    print 'circle not implemented!' # TODO: try out and implement
 
   # TODO: implement CTPATH: up to 8 pts path
   # TODO: consider implementing JOINT: move waist/shoulder/elbow/wrist bend/wrist swivel joint by deg individually
