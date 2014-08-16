@@ -7,32 +7,71 @@ import time
 import math
 
 
-# NOTE: joint 4, joint 6 have about ~360' (6 / yaw =-360 to 0, 4 / roll =0 to 360, 5 / pitch=0 to 360)
-# NOTE: pitch default should be -9.8 ('JOINT 5 -9.8')
-# TODO: set speed command, consider SPEED 40 (40% of max speed), but vibration takes ~1 sec
-# range: 1200x1200x800, full hemispherical angles (6 / yaw =-360 to 0, 4 / roll =0 to 360, 5 / pitch=0 to 360)
+''' Interactive testing code:
 
-# dismmiss read errors: 050-A, 018-I
+from GantryController import *
+gantry = GantryController()
+gantry.write('SPEED 40\r')
+#gantry.moveRel(0, 0, 0, 0, -9.8, 0) # adjust for biased zero pitch
+#gantry.moveRel(0, 0, 0, -180, 0, 0) # point tool towards croquette; also puts roll at middle of its range
 
-# Instructions:
-# 1. turn surge protector on
-# 2. on the pendant, press F1, F, F, F, F1, F1, to go into DEVICE mode
+[test logic here...]
+
+gantry.suicide()
+'''
+
+
+
+'''
+TODOS
+- convert read states to metric; also stamp time
+- implement read callback
+
+- test range of joint 6: yaw
+
+- process error codes, e.g. 003-AXIS#4 OUT, or [004-AXIS#5 OUT\0x15\r]
+
+- implement moveAbs, while adhering to range: 1200x1200x800, angular ranges
+  - from zero point, roll range should be [-360, 0]
+  - from zero point, first move pitch by -9.8 deg, then its range is (at least) [0, 90]
+'''
+
+radian = math.pi/180.0
+
+
+class SO3Pose:
+  def __init__(self, xm=0, ym=0, zm=0, rdeg=0, pdeg=0, ydeg=0):
+    self.x_m = xm
+    self.y_m = ym
+    self.z_m = zm
+    self.roll_deg = rdeg
+    self.pitch_deg = pdeg
+    self.yaw_deg = ydeg
+    
+  def __str__(self):
+    return 'xyz_m: [%.4f, %.4f, %.4f], rpy_deg: [%.4f, %.4f, %.4f]' % (self.x_m, self.y_m, self.z_m, self.roll_deg, self.pitch_deg, self.yaw_deg)
+
+
 class GantryController:
-  radian = math.pi/180.0
-
-  
   # NOTE: max baud rate is 38400
-  def __init__(self, device='/dev/ttyS4', baud=38400, timeout=None, verbose=True, is_sim=False, suicide_secs=None):
+  def __init__(self, device='/dev/ttyS4', baud=38400, timeout=None, verbose=True, is_sim=False, force_calibrate=False, suicide_secs=None, auto_poll_state=True, default_speed_ratio=0.4): # TODO: once all functioning, set timeout to some value, to ensure graceful recovery on unexpected status
     self.alive = True
     self.gantry_initialized = False
     self.gantry = None
     self.gantry_mutex = threading.Lock()
-    self.read_thread = None
+    self.spin_thread = None
+    self.suicide_timer = None
+    self.auto_poll_state = auto_poll_state
+    self.default_speed = min(max(default_speed_ratio, 0.00), 1.0)*100
+    self.yaw_offset_rad = -9.8*radian
+    self.xyz_motor_to_m_factor = 0.000015
+    self.rpy_motor_to_deg_factor = -0.0072 # TODO: obtain updated params from Francois
+    self.pose = None
+    self.pose_time = None
     self.verbose = verbose
     self.is_sim = is_sim
     self.write_queue_mutex = threading.Lock()
     self.write_queue = []
-    self.read_log = ''
     
     if not self.is_sim:
       self.gantry = serial.Serial(port=device, baudrate=baud, \
@@ -43,12 +82,14 @@ class GantryController:
       
       if not self.gantry.isOpen():
         raise Exception('Failed to connect to %s' % port)
-      print 'Gantry connected on %s' % device
+      if self.verbose:
+        print 'Gantry connected on %s' % device
+      self.gantry.flushInput()
       
-    self.initGantry()
+    self.initGantry(calibrate=force_calibrate)
       
-    #self.spin_thread = threading.Thread(target=self.spinLoop)
-    #self.spin_thread.start()
+    self.spin_thread = threading.Thread(target=self.spinLoop)
+    self.spin_thread.start()
     
     if suicide_secs is not None and suicide_secs > 0:
       self.suicide_timer = threading.Timer(suicide_secs, self.suicide)
@@ -56,7 +97,8 @@ class GantryController:
 
 
   def suicide(self):
-    print 'Gantry controller suicided!'
+    if self.verbose:
+      print 'Gantry controller suicided!'
     self.alive = False
     
       
@@ -66,6 +108,10 @@ class GantryController:
 
   def __exit__(self, type, value, traceback):
     self.alive = False
+    
+    if self.suicide_timer:
+      self.suicide_timer.cancel()
+      self.suicide_timer = None
     
     if self.spin_thread and self.spin_thread.isAlive():
       self.spin_thread.join(5.0)
@@ -78,69 +124,102 @@ class GantryController:
         self.gantry_mutex.release()
         print 'Gantry connection closed'
         
-        logfile = 'log.txt'
-        log = open(logfile, 'a')
-        log.write(self.read_log)
-        close(log)
-        print 'Wrote to log: %s' % logfile
-        
     except Exception, e:
       print 'Exception on exit: %s' % e
       pass
 
 
-  def _read(self, terminal_token='\r', maxlength=2000): # WARNING: NO MUTEX PROTECTIONS!
+  def _processErrorStr(self, msg):
+    if self.verbose:
+      print '\nERROR:', msg.replace('\r', '\\r').replace('\x15', '\\NACK')
+
+
+  def _processStateStr(self, msg):
+    if not self.alive:
+      return
+    try:
+      nums = [float(num) for num in msg.split()]
+      if not len(nums) == 6: # Incomplete state
+        return
+      
+      # Save state
+      self.pose = SO3Pose(nums[0]*self.xyz_motor_to_m_factor, nums[1]*self.xyz_motor_to_m_factor, nums[2]*self.xyz_motor_to_m_factor, nums[3]*self.rpy_motor_to_deg_factor, nums[4]*self.rpy_motor_to_deg_factor - self.yaw_offset_rad/radian, nums[5]*self.rpy_motor_to_deg_factor)
+      self.pose_time = time.time()
+      print 'Got state:', self.pose
+      
+    except ValueError: # Failed to cast to number
+      return
+
+  def _read(self, terminal_token='\r', maxlength=2000): # WARNING: NO MUTEX PROTECTIONS! CLIENTS SHOULD NOT USE!
     if self.is_sim:
       return ''
-    self.read_log += '\n--^--\n'
     content = ''
     reading = True
     while reading and self.alive and self.gantry is not None:
       data = self.gantry.read()
       if data and len(data) > 0:
-        #print '.', data
-        self.read_log += data
         content += data
-        if data.find(terminal_token) >= 0:
+        if terminal_token is not None and data.find(terminal_token) >= 0:
           reading = False
           break
-        elif len(content) > maxlength:
+        elif len(content) >= maxlength:
           reading = False
           break
-    self.read_log += '\n--v--\n'
     return content
     
 
-  def _readlines(self, maxlines = 200): # WARNING: NO MUTEX PROTECTIONS!
+  def _readlines(self, maxlines = 200): # WARNING: NO MUTEX PROTECTIONS! CLIENTS SHOULD NOT USE!
     if self.is_sim:
       return []
     lines = []
     reading = True
-    self.read_log += '\n==^==\n'
     while reading and self.alive and self.gantry is not None:
       line = self.gantry.readline()
-      self.read_log += line + '\n'
       if line and len(line) > 0:
         lines.append(line)
-        if len(lines) > maxlines:
+        if len(lines) >= maxlines:
           reading = False
           break
       else:
         reading = False
         break
-    self.read_log += '\n==v==\n'
     return lines
 
 
-  def _write(self, cmd): # WARNING: NO MUTEX PROTECTIONS!
+  def _write(self, cmd): # WARNING: NO MUTEX PROTECTIONS! CLIENTS SHOULD NOT USE!
     cmd = cmd.upper()
     if self.verbose:
-      print '>>', cmd
+      print '>>', cmd.replace('\r', '\\r')
     if self.gantry is not None:
       self.gantry.write(cmd)
 
+      # Fetch and discard echo-back
+      # NOTE: for some reason, the returned line has a bunch of backspaces
+      #       if the command string contains numbers, e.g. 'SPEED 40\r' returns
+      #       '>>SPEED 4<bkspc> <bkspc>40\r'
+      if cmd == '\r':
+        cmd_ack = '\r'
+      else:
+        cmd_ack = '%s' % cmd.split()[0]
+      ack_read = False
+      while not ack_read and self.alive:
+        line = self._read(terminal_token='\r')
+        if line.find(cmd_ack) >= 0:
+          ack_read = True
+          break
+        elif line.find('\x06') >= 0: # Got ACK; dismiss
+          continue
+        elif line.find('\x15') >= 0: # Got NACK; probably error string
+          self._processErrorStr(line)
+        elif line == '\r': # Got a single carriage return; dismiss
+          continue
+        elif line == '\n\n' or line == '\n\n\r': # Got harmless nwe lines; dismiss
+          continue
+        else:
+          print '\n!!! Unexpected cmd ack [\n' + line + '\n] a.k.a.', [ord(ch) for ch in line], '\n], expected [\n' + cmd_ack + '\n]\n'
 
-  def write(self, cmd):
+
+  def write(self, cmd): # i.e. append to write queue
     cmd = cmd.upper()
     self.write_queue_mutex.acquire()
     self.write_queue.append(cmd)
@@ -156,7 +235,7 @@ class GantryController:
           self.write_queue = []
           self.write_queue_mutex.release()
           for cmd in cmds:
-            self.gantry_mutex.acquire() # TODO: why is this loop locking?
+            self.gantry_mutex.acquire()
             self._write(cmd)
             self.gantry_mutex.release()
             if not self.alive:
@@ -166,174 +245,153 @@ class GantryController:
     else: # For real robot, continue to query W1 states until write_queue has content, then flush and repeat
       parsing_W1 = False
     
-      while self.alive:
-        # Initiate a W1 repeated poll request
-        if not parsing_W1:
+      while self.alive and self.gantry is not None:
+        if self.auto_poll_state:
+          # Initiate a W1 repeated poll request
+          if not parsing_W1:
+            self.gantry_mutex.acquire()
+            self._write('W1\r')
+            header_ack = False
+            header_exp = 'ACTUAL POSITION (MOTOR PULSES):'
+            while not header_ack and self.alive: # Scan for header
+              for line in self._readlines(1):
+                if line.find(header_exp) >= 0:
+                  header_ack = True
+                  break
+                elif line == '\r\n': # before header string, there is a new line; ignore
+                  continue
+                else:
+                  print '!!! Looking for header, found instead:[\n', line, '] a.k.a.', [ord(ch) for ch in line], '\n'
+            self._read(terminal_token='\r') # There is a carriage return after the header
+            parsing_W1 = True
+            self.gantry_mutex.release()
+
+          if not self.alive:
+            break
+
+          # Obtain one W1 state update from robot
           self.gantry_mutex.acquire()
-          self.gantry._write('W1\r')
-          self.gantry._read(maxlength=50) # Skip header for W1
-          parsing_W1 = True
-          self.write_queue_mutex.release()
+          if self.gantry is not None:
+            state = self._read(terminal_token='\r')
+            if state.find('\x15') >= 0:
+              self._processErrorStr(state)
+              parsing_W1 = False
+            else:
+              self._processStateStr(state)
+          self.gantry_mutex.release()
 
-        if not self.alive:
-          break
-
-        # Obtain one W1 state update from robot
-        self.gantry_mutex.acquire()
-        if self.gantry is not None:
-          state = self.gantry._read(terminal_token='\r')
-          print 'state:', state # TODO: parse state and do something with it, e.g. callback fn
-        self.write_queue_mutex.release()
-
-        if not self.alive:
-          break
+          if not self.alive:
+            break
         
         # Flush write queue if needed
         if len(self.write_queue) > 0:
-          # First stop W1 queries
-          self.gantry_mutex.acquire()
-          if self.gantry is not None:
-            self.gantry._write('\r')
-            self.gantry._read(terminal_token='\r')
+          if self.auto_poll_state and parsing_W1:
+            # First stop W1 state queries
+            self.gantry_mutex.acquire()
+            self._write('\r')
             parsing_W1 = False
-          self.write_queue_mutex.release()
+            self.gantry_mutex.release()
 
           # Then dump write queue
           self.write_queue_mutex.acquire()
           cmds = self.write_queue
           self.write_queue = []
           self.write_queue_mutex.release()
-
+          
           if not self.alive:
             break
           
           # Now sequentially issue commands
           for cmd in cmds:
+            if len(cmd) <= 0: # cmd is blank? should not happen
+              continue
             self.gantry_mutex.acquire()
-            if self.gantry is not None:
-              self.gantry._write(cmd)
+            self._write(cmd)
             self.gantry_mutex.release()
             if not self.alive:
               break
           
           
-  def initGantry(self, calibrate=True, calibrate_when_not_homed=False):
+  def initGantry(self, calibrate=False, calibrate_when_not_homed=True):
     self.gantry_mutex.acquire()
-    
     self._write('NOHELP\r') # disables auto-complete
-    print '<<<', self._readlines(1), '\n' # TODO: should we read 2+ lines instead?
     self._write('ONPOWER\r') # blocks until motors come on
-    print '<<<', self._readlines(1), '\n' # TODO: should we read 2+ lines instead?
-    
     if calibrate_when_not_homed:
       self._write('STATUS\r')
-      lines = self._readlines() # TODO: how many lines?
-      print '<<<', lines, '\n' # TODO: remove
-      for line in lines:
-        if line.find('NOT HOMED') >= 0:
+      for status_line in self._readlines(21):
+        if status_line.find('NOT HOMED') >= 0:
           calibrate = True
-
     if calibrate:
       print 'Calibrating...'
       self._write('RUN CAL\r')
-      print '<<<', self._readlines(1), '\n' # TODO: should we read 2+ lines instead?
       self._write('@ZERO\r')
-      print '<<<', self._readlines(1), '\n' # TODO: should we read 2+ lines instead?
-      # TODO: block until calibration returns
-
-    self._write('RUN INIT_SYS\r') # initialize gantry data, e.g. units
-    print '<<<', self._readlines(1), '\n' # TODO: should we read 2+ lines instead?
-    
+    self._write('RUN INIT_SYS\r') # initialize gantry data, e.g. units; also blocks till calibration is done
+    self._write('SPEED %.2f\r' % self.default_speed) # set default speed
+    if calibrate:
+      self._write('MI 0,0,0,0,%.4f,0\r' % self.yaw_offset_rad) # Correct yaw offset after calibration
     self.gantry_mutex.release()
-    
     self.gantry_initialized = True
   
   
-  def estop(self):
-    self.gantry_mutex.acquire()
-    self._write('ABORT\r')
-    self.gantry_mutex.release()
-    
+  def home(self): # Queue up a calibration
+    if not self.gantry_initialized:
+      raise Exception('Cannot home() before initializing gantry')
+    self.write('RUN CAL\r')
+    self.write('@ZERO\r')
+    self.write('RUN INIT_SYS\r') # initialize gantry data, e.g. units; also blocks till calibration is done
+    self.write('SPEED %.2f\r' % self.default_speed) # set default speed
+    self.write('MI 0,0,0,0,%.4f,0\r' % self.yaw_offset_rad) # Correct yaw offset after calibration
+  
 
-  def translateRel(self, dx_mm=0.0, dy_mm=0.0, dz_mm=0.0, linear_interp=False):
-    cmd = 'JOG %.4f,%.4f,%.4f' % (dx_mm, dy_mm, dz_mm)
-    if linear_interp:
-      cmd = '%s,S' % cmd
-    self.write(cmd + '\r')
-    
+  # NOTE: after every move, the head vibrates for some time. e.g. with SPEED 40, vibration takes ~1 sec to settle down
   def moveRel(self, dx_mm=0.0, dy_mm=0.0, dz_mm=0.0, roll_deg=0.0, pitch_deg=0.0, yaw_deg=0.0, linear_interp=False):
-    # TODO: figure out roll/pitch/yaw ranges, and orders; according to francois: (6 / yaw =-360 to 0, 4 / roll =0 to 360, 5 / pitch=0 to 90 + small)
+    if not self.gantry_initialized:
+      raise Exception('Cannot moveRel() before initializing gantry')
     cmd = 'MI %.4f,%.4f,%.4f,%.4f,%.4f,%.4f' % (dx_mm, dy_mm, dz_mm, roll_deg*radian, pitch_deg*radian, yaw_deg*radian)
-    if linear:
-      cmd = '%s,S' % cmd
-    self.write(cmd + '\r')
-    
-  def roll(self, deg=0.0, linear=False):
-    # TODO: test; also find out valid range and numerical range (e.g. is it -360 to 0?)
-    cmd = 'ROLL %.4f' % deg
-    if linear:
-      cmd = '%s,S' % cmd
-    self.write(cmd + '\r')
-    
-  def pitch(self, deg=0.0, linear=False):
-    # TODO: test; also find out valid range and numerical range (e.g. is it -360 to 0?)
-    cmd = 'PITCH %.4f' % deg
-    if linear:
-      cmd = '%s,S' % cmd
-    self.write(cmd + '\r')
-    
-  def yaw(self, deg=0.0, linear=False):
-    # TODO: test; also find out valid range and numerical range (e.g. is it -360 to 0?)
-    cmd = 'YAW %.4f' % deg
-    if linear:
+    if linear_interp:
       cmd = '%s,S' % cmd
     self.write(cmd + '\r')
   
 
 def main():
-  parser = argparse.ArgumentParser(description='GantryController Tester')
-  parser.add_argument("-d", "--device", type=str, required=False, help="Path to serial device", default='/dev/ttyS4')
+  parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter, # allow for multi-line strings
+    description='GantryController Tester',
+    epilog='GANTRY INITIALIZATION SEQUENCE:\n1. turn surge protector on\n2. on the pendant, press F1, F, F, F, F, F1, F1, to go into DEVICE mode\n3. press "ARM POWER" button on main controller box\n4. run this script')
+
   parser.add_argument('-s', '--sim', required=False, help="Simulate commands without connecting to serial device", action='store_true')
+  parser.add_argument("-d", "--device", type=str, required=False, help="Path to serial device", default='/dev/ttyS4')
+  parser.add_argument('-c', '--calibrate', required=False, help="Force calibration", action='store_true')
   parser.add_argument('-k', '--suicide', type=int, required=False, help="Number of seconds to run before gantry controller suicides", default=None)
   args = parser.parse_args()
   
-  with GantryController(args.device, is_sim=args.sim, suicide_secs=args.suicide) as gantry:
-    if args.sim:
-      print 'Writing stuff'
-      gantry.write('SPEED 40\r')
-      gantry.translateRel(100, 200, 300)
-      gantry.translateRel(-111.1, -222.2, 333.3, True)
-      
-      print 'Waiting for controller to self terminate'
-      while gantry.alive:
-        time.sleep(0.001)
-      
-    else:
-      gantry.write('SPEED 40\r')
-      #gantry.translateVel(dx=600.0, dy=400.0, dz=200.0, linear=False)
-      gantry.moveVel(dx=600.0, dy=400.0, dz=200.0, roll=-45, pitch=45, yaw=90, linear=False)
-      #gantry.write('MI 600,400,200,-1,1,1.5\r')
-      #gantry.write('JOINT 4 -180\r')
-      #gantry.write('JOINT 5 45\r')
-      #gantry.write('JOINT 6 10\r')
-      #gantry.write('MI 600,400,200,-1,1,1.5\r')
-      
-      time.sleep(2.0)
-      for i in xrange(5):
-        print 'getting W1 + enter', i
-        gantry.write('W1\r')
-        print '1>', gantry.read()
-        print '2>', gantry.read()
-        print '3>', gantry.read()
-        print '4>', gantry.read()
-        print '5>', gantry.read()
-        gantry.write('\r')
-        print '6>', gantry.read()
+  with GantryController(args.device, is_sim=args.sim, force_calibrate=args.calibrate, suicide_secs=args.suicide) as gantry:
+    try:
+      if args.sim:
+        gantry.write('SPEED 40\r')
+        gantry.translateRel(100, 200, 300)
+        gantry.translateRel(-111.1, -222.2, 333.3, True)
+        while gantry.alive:
+          time.sleep(0.001)
+        
+      else:
+        #gantry.home() # TODO: why does this stop W1 querying?
+        #time.sleep(5.0)
+        gantry.moveRel(40.0, 20.0, 60.0, -10, 20, 30, False)
+        time.sleep(10.0)
+        gantry.moveRel(-40.0, -20.0, -60.0, 10, -20, -30, False)
+        while gantry.alive:
+          time.sleep(0.001)
+
+    except KeyboardInterrupt:
+      print '^C pressed'
+      gantry.suicide()
 
 
 if __name__ == "__main__":
   try:
     main()
-  except KeyboardInterrupt:
-    print '^C pressed, exiting'
+  except AttributeError, e:
+    print e
+
 
