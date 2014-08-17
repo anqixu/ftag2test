@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<!--meta http-equiv="refresh" content="TEMPLATE_REFRESH_RATE_SEC" -->
+<style type="text/css">
+  body {background: #FFF; color: #000;}
+
+  /* Vertical centering: make div as large as viewport and use table layout */
+  div.container {top: 0; left: 0; width: 100%; height: 100%;
+    position: absolute; display: table}
+  p {display: table-cell; vertical-align: middle}
+
+  /* Horizontal centering of image: set left & right margins to 'auto' */
+  img.displayed {display: block; margin: 1em auto}
+
+  /* Also center the lines in the paragraph */
+  p {text-align: center}
+
+  body, html {height: 100%; margin: 0; padding: 0}
+
+  /* Keep the translations off to the side */
+  #language {display: none}
+  #translations {position: absolute; top: 0; right: 0; color: white;
+    text-shadow: none; margin: 0.5em; font-size: small;
+    background: #474; border-radius: 1em; padding: 0 0.5em}
+  #translations h2, #translations p, #translations a {display: block;
+    text-align: center; font-size: 100%}
+  </style>
+<meta charset="utf-8" />
+<script>
+  function transformImage(size, rot, imageName) {
+    document.getElementById("img").width = size;
+    document.getElementById("img").height = size;
+    document.getElementById("img").src="images/"+imageName;
+    document.getElementById("img").style.MozTransform = "rotate(" + rot + "deg)";
+    document.getElementById("img").style.webkitTransform = "rotate(" + rot + "deg)";
+  }
+  
+  function update() {
+	transformImage(600, TEMPLATE_IMAGE_ROTATION);
+  }
+  
+  var timer = null;
+  function pollServer() {
+    var d = new Date();
+    var n = d.valueOf()/1e3;
+    //var elem = document.getElementById('client_time');
+    //elem.innerHTML = n;
+
+    var req = false;
+    try {
+      // Firefox, Opera 8.0+, Safari
+      req = new XMLHttpRequest();
+    } 
+    catch (e) {
+      // Internet Explorer
+      try {
+        req = new ActiveXObject("Msxml2.XMLHTTP");
+      } 
+      catch (e) {
+        try {
+          req = new ActiveXObject("Microsoft.XMLHTTP");
+        } 
+        catch (e) { 
+          alert("Your browser does not support AJAX!");
+          return false;
+        }
+      }
+    }
+  
+    req.open("POST", "poll", true); // asynchronous
+    req.onreadystatechange = function() {
+      if (req.readyState == 4) {
+        if (req.status == 200) {
+          handlePollResponse(req);
+        } 
+        else { // POST request failed, so stop polling
+          clearInterval(timer);
+          //var elem = document.getElementById('server_time');
+          //elem.innerHTML = 'FAILED TO CONNECT TO SERVER; req.status: ' + req.status;
+        }
+      }
+    }
+  
+    // Call POST without sending any client-side data
+    //req.send();
+    // -or- Send arbitrary data to server
+    req.send(n);
+  };
+  
+</script>
+</head>
+
+<script>
+
+var image_name = "";
+function handlePollResponse(req) {
+  var elem = document.getElementById('tag_name');  
+  //var elem = document.getElementById('server_time');
+  //elem.innerHTML = req.responseText;
+  //if ( req.responseText == "True" )
+  if ( req.responseText != "False" )
+  {
+    image_name = req.responseText;
+    console.log("Image: " + image_name);
+    console.log("Timer init!");
+    //console.log("Widow: " + window.screen.availWidth);
+    transformImage(600, 0, "white.png");
+    elem.innerHTML = "";
+    setTimeout(changeImage,500);
+  }
+};
+
+function changeImage()
+{
+  console.log("Timer done!");
+  var win_width = window.screen.availWidth;
+  //var win_width = $(window).width();
+  //var win_height = window.screen.availHeight;
+  var win_height = window.screen.availHeight;
+  var size = Math.min(win_width,win_height);
+  console.log("Size: " + size);
+  transformImage(size*(0.8), 0, image_name);
+  var elem = document.getElementById('tag_name');
+  elem.innerHTML = image_name;
+}
+
+
+function pollLoop() {
+  timer = setInterval(function() {pollServer()}, 100); // poll every 100ms
+  var x = 1;
+};
+</script>
+
+<body onload="pollLoop()">
+<!--body-->
+
+<!--body onload="setTimeout(update, 300)"-->
+  <div id="panel">
+    &nbsp;
+    <div id="tag_name" align="center">TEMPLATE_TAG_FILENAME</div>
+  </div>
+  <div class="container">
+    <p><img id="img" class="displayed"></p>
+  </div>
+</body>
+</html>
