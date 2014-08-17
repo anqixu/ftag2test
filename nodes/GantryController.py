@@ -411,18 +411,18 @@ def main():
           d_tag_pitch_deg = 20
           d_tag_yaw_deg = 20
           d_in_plane_rot = 20
-          sleep_sec = 4.0
+          sleep_sec = 5.0
           
           print '> centering'
           gantry.moveRel(max_xy/2, max_xy/2, max_z/2, -180, 0, 180)
           time.sleep(10.0)
           
-          print '> +x (right)'
-          gantry.moveRel(dy_m=-d_x_m)
+          print '> +x (right, in camera coordinate)'
+          gantry.moveRel(dy_m=d_x_m)
           time.sleep(sleep_sec)
         
           print '> center (-x)'
-          gantry.moveRel(dy_m=d_x_m)
+          gantry.moveRel(dy_m=-d_x_m)
           time.sleep(sleep_sec)
         
           print '> +y (upwards in tag plane)'
@@ -457,29 +457,30 @@ def main():
           gantry.moveRel(dpitch_deg=-d_tag_pitch_deg, droll_deg=-180, dyaw_deg=-180)
           time.sleep(sleep_sec)
 
-          print '> + tag yaw (right) (equivalent transform)'
-          gantry.moveRel(dpitch_deg=d_tag_yaw_deg, droll_deg=90, dyaw_deg=-90)
-          time.sleep(sleep_sec)
-          
-          print '> center (-tag yaw) (equivalent transform)'
-          gantry.moveRel(dpitch_deg=-d_tag_pitch_deg, droll_deg=-90, dyaw_deg=90)
-          time.sleep(sleep_sec)
-          
-          print '> - tag yaw (left) (equivalent transform)'
+          print '> + tag yaw (right in camera frame) (equivalent transform)'
           gantry.moveRel(dpitch_deg=d_tag_yaw_deg, droll_deg=-90, dyaw_deg=90)
           time.sleep(sleep_sec)
           
-          print '> center (+tag yaw) (equivalent transform)'
+          print '> center (-tag yaw) (equivalent transform)'
           gantry.moveRel(dpitch_deg=-d_tag_pitch_deg, droll_deg=90, dyaw_deg=-90)
           time.sleep(sleep_sec)
           
-          print '> +tag in-plane rotate (clockwise)'
+          print '> - tag yaw (left in camera frame) (equivalent transform)'
+          gantry.moveRel(dpitch_deg=d_tag_yaw_deg, droll_deg=90, dyaw_deg=-90)
+          time.sleep(sleep_sec)
+          
+          print '> center (+tag yaw) (equivalent transform)'
+          gantry.moveRel(dpitch_deg=-d_tag_pitch_deg, droll_deg=-90, dyaw_deg=90)
+          time.sleep(sleep_sec)
+          
+          print '> +tag in-plane rotate (clockwise in camera frame)'
+          gantry.moveRel(droll_deg=-d_in_plane_rot)
+          time.sleep(sleep_sec)          
+
+          print '> center (-tag in-plane rotate)'
           gantry.moveRel(droll_deg=d_in_plane_rot)
           time.sleep(sleep_sec)
           
-          print '> center (-tag in-plane rotate)'
-          gantry.moveRel(droll_deg=-d_in_plane_rot)
-          time.sleep(sleep_sec)          
           
         # Halt robot
         if True:
