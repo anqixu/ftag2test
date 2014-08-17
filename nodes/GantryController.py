@@ -21,24 +21,16 @@ gantry.suicide()
 '''
 
 
-
-'''
-TODOS
-- convert read states to metric; also stamp time
-- implement read callback
-
-- test range of joint 6: yaw
-
-- process error codes, e.g. 003-AXIS#4 OUT, or [004-AXIS#5 OUT\0x15\r]
-
-- implement moveAbs, while adhering to range: 1200x1200x800, angular ranges
-  - from zero point, roll range should be [-360, 0]
-  - from zero point, first move pitch by -9.8 deg, then its range is (at least) [0, 90]
-'''
-
 radian = math.pi/180.0
 
 
+# Ranges on gantry robot:
+# x_m: 0 - 1.15 (positive = move towards croquette)
+# y_m: 0 - 1.15 (positive = move right from croquette's view)
+# z_m: 0 - 0.8 (positive = move upwards)
+# roll_deg: -360 - 0 (positive = rotate base counter-clockwise, starting away from croquette)
+# pitch_deg: 0 - 90 (positive = pitch up from ground towards horizontal)
+# yaw_deg: 0 - 360 (positive = rotate hand joint clockwise)
 class SO3Pose:
   def __init__(self, xm=0, ym=0, zm=0, rdeg=0, pdeg=0, ydeg=0):
     self.x_m = xm
@@ -54,7 +46,7 @@ class SO3Pose:
 
 class GantryController:
   # NOTE: max baud rate is 38400
-  def __init__(self, device='/dev/ttyS4', baud=38400, timeout=None, verbose=True, is_sim=False, force_calibrate=False, suicide_secs=None, auto_poll_state=True, default_speed_ratio=0.4): # TODO: once all functioning, set timeout to some value, to ensure graceful recovery on unexpected status
+  def __init__(self, device='/dev/ttyS4', baud=38400, timeout=10.0, verbose=True, is_sim=False, force_calibrate=False, suicide_secs=None, auto_poll_state=True, default_speed_ratio=0.4, state_cb=None):
     self.alive = True
     self.gantry_initialized = False
     self.gantry = None
@@ -62,10 +54,11 @@ class GantryController:
     self.spin_thread = None
     self.suicide_timer = None
     self.auto_poll_state = auto_poll_state
+    self.state_cb = state_cb
     self.default_speed = min(max(default_speed_ratio, 0.00), 1.0)*100
     self.yaw_offset_rad = -9.8*radian
     self.xyz_motor_to_m_factor = 0.000015
-    self.rpy_motor_to_deg_factor = -0.0072 # TODO: obtain updated params from Francois
+    self.rpy_motor_to_deg_factor = -0.0071993161 # TODO: obtain updated params from Francois
     self.pose = None
     self.pose_time = None
     self.verbose = verbose
@@ -143,9 +136,18 @@ class GantryController:
         return
       
       # Save state
-      self.pose = SO3Pose(nums[0]*self.xyz_motor_to_m_factor, nums[1]*self.xyz_motor_to_m_factor, nums[2]*self.xyz_motor_to_m_factor, nums[3]*self.rpy_motor_to_deg_factor, nums[4]*self.rpy_motor_to_deg_factor - self.yaw_offset_rad/radian, nums[5]*self.rpy_motor_to_deg_factor)
+      self.pose = SO3Pose(
+        -nums[0]*self.xyz_motor_to_m_factor,
+        nums[1]*self.xyz_motor_to_m_factor,
+        nums[2]*self.xyz_motor_to_m_factor,
+        nums[3]*self.rpy_motor_to_deg_factor,
+        nums[4]*self.rpy_motor_to_deg_factor - self.yaw_offset_rad/radian,
+        nums[5]*self.rpy_motor_to_deg_factor)
       self.pose_time = time.time()
-      print 'Got state:', self.pose
+      
+      # Process callback
+      if self.state_cb is not None:
+        self.state_cb(self.pose)
       
     except ValueError: # Failed to cast to number
       return
@@ -322,7 +324,8 @@ class GantryController:
         if status_line.find('NOT HOMED') >= 0:
           calibrate = True
     if calibrate:
-      print 'Calibrating...'
+      if self.verbose:
+        print 'Calibrating...'
       self._write('RUN CAL\r')
       self._write('@ZERO\r')
     self._write('RUN INIT_SYS\r') # initialize gantry data, e.g. units; also blocks till calibration is done
@@ -344,13 +347,17 @@ class GantryController:
   
 
   # NOTE: after every move, the head vibrates for some time. e.g. with SPEED 40, vibration takes ~1 sec to settle down
-  def moveRel(self, dx_mm=0.0, dy_mm=0.0, dz_mm=0.0, roll_deg=0.0, pitch_deg=0.0, yaw_deg=0.0, linear_interp=False):
+  def moveRel(self, dx_m=0.0, dy_m=0.0, dz_m=0.0, droll_deg=0.0, dpitch_deg=0.0, dyaw_deg=0.0, linear_interp=False):
     if not self.gantry_initialized:
       raise Exception('Cannot moveRel() before initializing gantry')
-    cmd = 'MI %.4f,%.4f,%.4f,%.4f,%.4f,%.4f' % (dx_mm, dy_mm, dz_mm, roll_deg*radian, pitch_deg*radian, yaw_deg*radian)
+    cmd = 'MI %.4f,%.4f,%.4f,%.4f,%.4f,%.4f' % (dx_m*1.e3, dy_m*1.e3, dz_m*1.e3, droll_deg*radian, dpitch_deg*radian, dyaw_deg*radian)
     if linear_interp:
       cmd = '%s,S' % cmd
     self.write(cmd + '\r')
+
+
+def stateCB(state):
+  print 'New state (%.6f) - ' % (time.time()), state
   
 
 def main():
@@ -365,7 +372,7 @@ def main():
   parser.add_argument('-k', '--suicide', type=int, required=False, help="Number of seconds to run before gantry controller suicides", default=None)
   args = parser.parse_args()
   
-  with GantryController(args.device, is_sim=args.sim, force_calibrate=args.calibrate, suicide_secs=args.suicide) as gantry:
+  with GantryController(args.device, is_sim=args.sim, force_calibrate=args.calibrate, suicide_secs=args.suicide, state_cb=stateCB) as gantry:
     try:
       if args.sim:
         gantry.write('SPEED 40\r')
@@ -374,12 +381,110 @@ def main():
         while gantry.alive:
           time.sleep(0.001)
         
-      else:
-        #gantry.home() # TODO: why does this stop W1 querying?
-        #time.sleep(5.0)
-        gantry.moveRel(40.0, 20.0, 60.0, -10, 20, 30, False)
-        time.sleep(10.0)
-        gantry.moveRel(-40.0, -20.0, -60.0, 10, -20, -30, False)
+      else: # Actual test code on actual gantry robot
+        # Example of test on gantry robot: python GantryController.py -k 30 -c
+      
+        # Initiate a manual homing
+        if False:
+          gantry.home()
+          time.sleep(5.0)
+        
+        # Move motors, then sleep to show state, and move back
+        if False:
+          gantry.moveRel(0.04, 0.02, 0.06, -10, 20, 30, False)
+          time.sleep(5.0)
+          gantry.moveRel(-0.04, -0.02, -0.06, 10, -20, -30, False)
+          
+        # Move motors to extremes, then sleep to show state, and move back
+        if False:
+          gantry.moveRel(1.15, 1.15, 0.8, -360, 90, 360, False)
+          time.sleep(10.0)
+          gantry.moveRel(-1.15, -1.15, -0.8, 360, -90, -360, False)
+          
+        # Move end-effector to center, then perturb each dimension
+        if True:
+          max_xy = 1.15
+          max_z = 0.8
+          d_x_m = 0.2
+          d_y_m = 0.2
+          d_z_m = 0.2
+          d_tag_pitch_deg = 20
+          d_tag_yaw_deg = 20
+          d_in_plane_rot = 20
+          sleep_sec = 4.0
+          
+          print '> centering'
+          gantry.moveRel(max_xy/2, max_xy/2, max_z/2, -180, 0, 180)
+          time.sleep(10.0)
+          
+          print '> +x (right)'
+          gantry.moveRel(dy_m=-d_x_m)
+          time.sleep(sleep_sec)
+        
+          print '> center (-x)'
+          gantry.moveRel(dy_m=d_x_m)
+          time.sleep(sleep_sec)
+        
+          print '> +y (upwards in tag plane)'
+          gantry.moveRel(dx_m=d_y_m)
+          time.sleep(sleep_sec)
+
+          print '> center (-y)'
+          gantry.moveRel(dx_m=-d_y_m)
+          time.sleep(sleep_sec)
+
+          print '> +z (towards)'
+          gantry.moveRel(dz_m=-d_z_m)
+          time.sleep(sleep_sec)
+        
+          print '> center (-z)'
+          gantry.moveRel(dz_m=d_z_m)
+          time.sleep(sleep_sec)
+          
+          print '> +tag pitch (up)'
+          gantry.moveRel(dpitch_deg=d_tag_pitch_deg)
+          time.sleep(sleep_sec)
+          
+          print '> center (-tag pitch)'
+          gantry.moveRel(dpitch_deg=-d_tag_pitch_deg)
+          time.sleep(sleep_sec)
+          
+          print '> -tag pitch (equivalent transform)'
+          gantry.moveRel(dpitch_deg=d_tag_pitch_deg, droll_deg=180, dyaw_deg=180)
+          time.sleep(sleep_sec)
+          
+          print '> center (+tag pitch) (equivalent transform)'
+          gantry.moveRel(dpitch_deg=-d_tag_pitch_deg, droll_deg=-180, dyaw_deg=-180)
+          time.sleep(sleep_sec)
+
+          print '> + tag yaw (right) (equivalent transform)'
+          gantry.moveRel(dpitch_deg=d_tag_yaw_deg, droll_deg=90, dyaw_deg=-90)
+          time.sleep(sleep_sec)
+          
+          print '> center (-tag yaw) (equivalent transform)'
+          gantry.moveRel(dpitch_deg=-d_tag_pitch_deg, droll_deg=-90, dyaw_deg=90)
+          time.sleep(sleep_sec)
+          
+          print '> - tag yaw (left) (equivalent transform)'
+          gantry.moveRel(dpitch_deg=d_tag_yaw_deg, droll_deg=-90, dyaw_deg=90)
+          time.sleep(sleep_sec)
+          
+          print '> center (+tag yaw) (equivalent transform)'
+          gantry.moveRel(dpitch_deg=-d_tag_pitch_deg, droll_deg=90, dyaw_deg=-90)
+          time.sleep(sleep_sec)
+          
+          print '> +tag in-plane rotate (clockwise)'
+          gantry.moveRel(droll_deg=d_in_plane_rot)
+          time.sleep(sleep_sec)
+          
+          print '> center (-tag in-plane rotate)'
+          gantry.moveRel(droll_deg=-d_in_plane_rot)
+          time.sleep(sleep_sec)          
+          
+        # Halt robot
+        if True:
+          gantry.suicide()
+          
         while gantry.alive:
           time.sleep(0.001)
 
