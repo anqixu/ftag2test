@@ -1,6 +1,6 @@
 #! /usr/bin/env python
-import rospy
-import roslib
+# import rospy
+# import roslib
 from ftag2test.msg import ControllerState
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
@@ -18,6 +18,8 @@ import time
 import BaseHTTPServer
 import SimpleHTTPServer
 
+from threading import Lock
+
 from GantryController import *
 
 HOST_NAME = ''
@@ -26,9 +28,9 @@ PORT_NUMBER = 8888
 rotations_r = [- math.pi]
 rotations_p = [- math.pi, math.pi]
 rotations_y = [- math.pi, math.pi]
-positions_x = [-1.0]
-positions_y = [-1.0, 1.0]
-positions_z = [-1.0, 1.0]
+positions_x = [0.0, 1.15]
+positions_y = [0.0, 1.15]
+positions_z = [0, 0.8]
 
 IMAGE_TIMOUT_DURATION = 1
 
@@ -46,7 +48,7 @@ maxNumFTag2Images = 10
 maxNumArtagImages = 10
 maxNumArucoImages = 10
 
-ptu_sleep_s = 5.0 # wait for wobble to settle
+# ptu_sleep_s = 5.0 # wait for wobble to settle
 displayer_sleep_m = 0.8
 detection_timeout_s = 0.45
 
@@ -241,8 +243,10 @@ class GantryServer:
     
     gantry_pose = PoseStamped()
     
+    self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
+                    
 #     pose.header.frame_id = frame_id
-    pose.header.stamp = rospy.Time.now()
+#     pose.header.stamp = rospy.Time.now()
     self.mutex.acquire()
     gantry_pose.pose.position.x = state.x_m
     gantry_pose.pose.position.y = state.y_m
@@ -261,24 +265,23 @@ class GantryServer:
   def __init__(self):
     
     self.mutex = Lock()
-#     self.state_pub = rospy.Publisher('/testbench_controller/state', ControllerState)
-    rospy.init_node('GantryServer')
+#     rospy.init_node('GantryServer')
         
-    self.state_pub = rospy.Publisher('/controller_state', ControllerState, queue_size=10)
-    self.string_pub = rospy.Publisher('/ftag2test', String, queue_size=10)
-    self.gantry_state_pub = rospy.Publisher('/gantry_state', PoseStamped, queue_size=10)
+#     self.state_pub = rospy.Publisher('/controller_state', ControllerState, queue_size=10)
+#     self.string_pub = rospy.Publisher('/ftag2test', String, queue_size=10)
+#     self.gantry_state_pub = rospy.Publisher('/gantry_state', PoseStamped, queue_size=10)
 
     self.last_cmd = ""
-#     self.state_msg = None
     
-    r = rospy.Rate(10) # 10hz
+#     r = rospy.Rate(10) # 10hz
         
     self.image_timeout = None
+    self.gantry_timeout = None
     
-    self.FINISHED_MOVING = False
-    self.FINISHED_ROTATING = False
+    self.MOVING = True
     
     self.alive = False
+    self.exit = False
     self.batch_id = 0
     self.num_images = [0,0,0]
     self.curr_family = 0
@@ -293,9 +296,12 @@ class GantryServer:
     self.tagImageNames = []
     global imagePaths
     imagePaths = [];
-    imagePaths = [roslib.packages.get_pkg_dir('ftag2test') + '/html/images/ftag2']
-    imagePaths.extend([roslib.packages.get_pkg_dir('ftag2test') + '/html/images/artag'])
-    imagePaths.extend([roslib.packages.get_pkg_dir('ftag2test') + '/html/images/aruco'])
+#     imagePaths = [roslib.packages.get_pkg_dir('ftag2test') + '/html/images/ftag2']
+#     imagePaths.extend([roslib.packages.get_pkg_dir('ftag2test') + '/html/images/artag'])
+#     imagePaths.extend([roslib.packages.get_pkg_dir('ftag2test') + '/html/images/aruco'])
+    imagePaths = [os.path.abspath('../html/images/ftag2')]
+    imagePaths.extend([os.path.abspath('../html/images/artag')])
+    imagePaths.extend([os.path.abspath('../html/images/aruco')])
 #     print imagePaths
     for i in range(0,3):
       imagePath = imagePaths[i]
@@ -308,7 +314,9 @@ class GantryServer:
     if len(self.tagImageNames) <= 0:
       error('Could not find any images in: ' + imagePath)
     
-    
+#     print self.tagImageNames
+#     print tag_Family
+#     time.sleep(10)
     global maxNumImages    
     
     maxNumImages[0] = min(len(self.tagImageNames[0]), maxNumFTag2Images)
@@ -318,15 +326,14 @@ class GantryServer:
     self.PositionGrid = list(itertools.product(positions_x, positions_y, positions_z)) 
     self.RotationGrid = list(itertools.product(rotations_r, rotations_p, rotations_y))
 
-    rospy.on_shutdown(self.shutdown)
+#     rospy.on_shutdown(self.shutdown)
   
     self.ui_thread = threading.Thread(target=self.ui_loop)
     self.ui_thread.start()
-    self.alive = False
     self.fsm = State.MOVE
 
-    self.comm_in_thread = threading.Thread(target=self.comm_in_loop)
-    self.comm_in_thread.start()
+#     self.comm_in_thread = threading.Thread(target=self.comm_in_loop)
+#     self.comm_in_thread.start()
 
 
     handler = MyHandler
@@ -337,6 +344,8 @@ class GantryServer:
     print '%s server started - %s:%s' % (time.asctime(), HOST_NAME, PORT_NUMBER)
         
     self.gantry = GantryController(is_sim = True, verbose = False, force_calibrate = True, state_cb = self.GantryStateCB)
+    self.old_pose = [0,0,0,0,0,0]
+    self.new_pose = [0,0,0,0,0,0]
 
   def shutdown(self):
     self.gantry.suicide()
@@ -349,89 +358,84 @@ class GantryServer:
 
 
   def ui_loop(self):
-    while not rospy.is_shutdown():
+    while not self.exit: #not rospy.is_shutdown():
       c = getch()
       if c == 'x' or c == 'X':
+        self.exit = True
         self.gantry.suicide()
-        rospy.signal_shutdown('User pressed X')
+#         rospy.signal_shutdown('User pressed X')
+        self.shutdown()
       elif c == 'm' or c== 'M':
-          self.FINISHED_MOVING = True
+          self.MOVING = False
       elif c == 'r' or c == 'R':
           self.FINISHED_ROTATING = True      
       elif c == ' ':
         if self.alive:
           self.alive = False
 #           self.fsm = State.REPORT_FINAL_DETECTION
-          rospy.loginfo('STOPPED')
+#           rospy.loginfo('STOPPED')
         else:
           self.alive = True
-          rospy.loginfo('STARTED')
+#           rospy.loginfo('STARTED')
           
-  def comm_in_loop(self):
-    rospy.sleep(2)
-    while not rospy.is_shutdown():
-#         self.httpd.handle_request()
-        rospy.sleep(0.01)
+#   def comm_in_loop(self):
+# #     rospy.sleep(2)
+#     time.sleep(2)
+#     while not rospy.is_shutdown():
+# #         self.httpd.handle_request()
+# #         rospy.sleep(0.01)
+#       time.sleep(0.01)
         
+  def gantryStopped(self):
+    moved = False
+    
+    for (a,b) in zip(self.old_pose, self.new_pose):
+      if a != b:
+        moved = True
+        break
+    
+    if moved:
+      self.MOVING = True
+#       self.gantry_timeout = rospy.Timer(rospy.Duration(0.5), self.gantryStopped, True)
+      self.gantry_timeout = threading.Timer(0.5, self.gantryStopped)
+      
+    else:
+      self.MOVING = False
+#       self.gantry_timeout.shutdown()
+      self.gantry_timeout = None
+    self.old_pose = self.new_pose
 
-  def imageTimeout(self, data):
+  def imageTimeoutCB(self):
     if self.fsm == State.WAIT_SHOWING_TAGS:
-      print "\n\rFINISHED SHOWING TAGS"
+      print "\n\rFINISHED SHOWING TAG"
       self.fsm = State.SHOW_TAGS
-#       self.timeout = rospy.Timer(rospy.Duration(3), self.imageTimeout, True)
-#       self.image_timeout.shutdown()
       self.image_timeout = None    
       
-#   def publishState(self, publish_state):
-#     x = 4
-#     
-# float64 comm_pos_y
-# float64 comm_pos_z
-# float64 comm_rot_roll
-# float64 comm_rot_pitch
-# float64 comm_rot_yaw
-# 
-# float64 gant_pos_x
-# float64 gant_pos_y
-# float64 gant_pos_z
-# float64 gant_rot_roll
-# float64 gant_rot_pitch
-# float64 gant_rot_yaw
-# 
-#     stateMsg.displayer = self.curr_image
-#     stateMsg.frameID = msg.frameID
-#     stateMsg.encoded_phases = encoded_phases
-#     stateMsg.fsm = str(self.fsm)
-#     stateMsg.num_detections = self.num_detections
-#     stateMsg.num_images = self.num_images
-#     stateMsg.num_poses = self.num_poses
-#     self.state_pub.publish(stateMsg)
-#     
-#     self.last_cmd = ""
 
   def spin(self):
-    while not rospy.is_shutdown():
+    while not self.exit:
 #       rospy.sleep(0.01)   
         
       if not self.alive or self.fsm == State.IDLE or self.fsm == State.WAIT_SHOWING_TAGS:
-        rospy.sleep(0.1)
+#         rospy.sleep(0.1)
+        time.sleep(0.1)
       
 ##############################################################################
       elif self.fsm == State.WAIT_MOVING:
-        if self.FINISHED_MOVING:
+        if not self.MOVING:
           self.fsm = State.ROTATE
-          self.FINISHED_MOVING = False
         else :
-          rospy.sleep(0.1)
+#           rospy.sleep(0.1)
+          time.sleep(0.1)
 ##############################################################################        
         
 ##############################################################################
       elif self.fsm == State.WAIT_ROTATING:
-        if self.FINISHED_ROTATING:
+        if not self.MOVING:
           self.fsm = State.SHOW_TAGS
-          self.FINISHED_ROTATING = False
         else :
-          rospy.sleep(0.1)  
+#           rospy.sleep(0.1)
+          time.sleep(0.1)  
 ##############################################################################
 
 ##############################################################################
@@ -444,33 +448,34 @@ class GantryServer:
         else :
           # TODO: send movement command
         
-          
-#           gantry.write('SPEED 40\r')
-#           gantry.moveRel(0, 0, 0, 0, -9.8, 0) # adjust for biased zero pitch
-#           gantry.moveRel(0, 0, 0, -180, 0, 0) # point tool towards croquette; also puts roll at middle of its range
+          cmd = ""
+          if self.num_positions > 0 :  
+            dx = self.PositionGrid[self.num_positions][0] - self.PositionGrid[self.num_positions-1][0]
+            dy = self.PositionGrid[self.num_positions][1] - self.PositionGrid[self.num_positions-1][1]
+            dz = self.PositionGrid[self.num_positions][2] - self.PositionGrid[self.num_positions-1][2]      
+            self.gantry.write('SPEED 40\r')
+            self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # adjust for biased zero pitch
          
-          print '\n\r[Wait] Moving to, ', self.PositionGrid[self.num_positions], '...\r'
-          cmd = 'mov: ' +  ', '.join(map(str,self.PositionGrid[self.num_positions]))
+            print '\n\r[Wait] Moving to, ', self.PositionGrid[self.num_positions], '...\r'
+            cmd = 'mov: ' +  ', '.join(map(str,self.PositionGrid[self.num_positions]))
   
-          state_msg = ControllerState()
-          state_msg.comm_pos_x = self.PositionGrid[self.num_positions][0]
-          state_msg.comm_pos_y = self.PositionGrid[self.num_positions][1]
-          state_msg.comm_pos_z = self.PositionGrid[self.num_positions][2]
-          state_msg.command = cmd
-          state_msg.fsm = str(self.fsm)
-          state_msg.image_count = self.image_count
-          state_msg.pos_count = self.num_positions 
-          state_msg.rot_count = self.num_rotations
-#           state_msg.gant_pos_x =
-#           state_msg.gant_pos_y =
-#           state_msg.gant_pos_z =
-#           state_msg.gant_rot_r =
-#           state_msg.gant_rot_p =
-#           state_msg.gant_rot_y = 
-          self.state_pub.publish(state_msg)
+#           state_msg = ControllerState()
+#           state_msg.comm_pos_x = self.PositionGrid[self.num_positions][0]
+#           state_msg.comm_pos_y = self.PositionGrid[self.num_positions][1]
+#           state_msg.comm_pos_z = self.PositionGrid[self.num_positions][2]
+#           state_msg.command = cmd
+#           state_msg.fsm = str(self.fsm)
+#           state_msg.image_count = self.image_count
+#           state_msg.pos_count = self.num_positions 
+#           state_msg.rot_count = self.num_rotations
+#           self.state_pub.publish(state_msg)
           
           self.num_positions += 1
           self.fsm = State.WAIT_MOVING
+          self.MOVING = True
+#           self.gantry_timeout = rospy.Timer(rospy.Duration(0.5), self.gantryStopped, True)
+          self.gantry_timeout = threading.Timer(0.5, self.gantryStopped)
+          self.gantry_timeout.start()
           
 ##############################################################################
 
@@ -478,34 +483,40 @@ class GantryServer:
       elif self.fsm == State.ROTATE:
         if self.num_rotations < len(self.RotationGrid) :
           # TODO: send rotation command 
+                
+          cmd = ""
+          if self.num_rotations > 0 :  
+            dr = self.RotationGrid[self.num_rotations][0] - self.RotationGrid[self.num_rotations-1][0]
+            dp = self.RotationGrid[self.num_rotations][1] - self.RotationGrid[self.num_rotations-1][1]
+            dy = self.RotationGrid[self.num_rotations][2] - self.RotationGrid[self.num_rotations-1][2]      
+            self.gantry.write('SPEED 40\r')
+            self.gantry.moveRel(droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy) # adjust for biased zero pitch
+
+            cmd = 'rot: ' +  ', '.join(map(str,self.RotationGrid[self.num_rotations]))
+            
           print '\n\r[Wait] Rotating to, ', self.RotationGrid[self.num_rotations], '...\r'
-          print "RotationGrid[num_pos][2]: ", self.RotationGrid[self.num_rotations][1]
-          
-          cmd = 'rot: ' +  ', '.join(map(str,self.RotationGrid[self.num_rotations]))
           
           self.curr_family = 0
           self.num_images = [0,0,0]
           
-          state_msg = ControllerState()
-          state_msg.comm_rot_r = self.RotationGrid[self.num_rotations][0]
-          state_msg.comm_rot_p = self.RotationGrid[self.num_rotations][1]
-          state_msg.comm_rot_y = self.RotationGrid[self.num_rotations][2]
-          state_msg.command = cmd
-          state_msg.fsm = str(self.fsm)
-          state_msg.image_count = self.image_count
-          state_msg.pos_count = self.num_positions 
-          state_msg.rot_count = self.num_rotations
-#           state_msg.gant_pos_x =
-#           state_msg.gant_pos_y =
-#           state_msg.gant_pos_z =
-#           state_msg.gant_rot_r =
-#           state_msg.gant_rot_p =
-#           state_msg.gant_rot_y = 
-
-          self.state_pub.publish(state_msg)
+#           state_msg = ControllerState()
+#           state_msg.comm_rot_r = self.RotationGrid[self.num_rotations][0]
+#           state_msg.comm_rot_p = self.RotationGrid[self.num_rotations][1]
+#           state_msg.comm_rot_y = self.RotationGrid[self.num_rotations][2]
+#           state_msg.command = cmd
+#           state_msg.fsm = str(self.fsm)
+#           state_msg.image_count = self.image_count
+#           state_msg.pos_count = self.num_positions 
+#           state_msg.rot_count = self.num_rotations
+# 
+#           self.state_pub.publish(state_msg)
           
           self.num_rotations += 1
           self.fsm = State.WAIT_ROTATING
+          self.MOVING = True
+#           self.gantry_timeout = rospy.Timer(rospy.Duration(0.5), self.gantryStopped, False)
+          self.gantry_timeout = threading.Timer(0.5, self.gantryStopped)
+          self.gantry_timeout.start()
           
         else:
           self.fsm = State.MOVE
@@ -544,22 +555,18 @@ class GantryServer:
           cmd = "show: " + self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
           
           self.fsm = State.WAIT_SHOWING_TAGS
-          self.timeout = rospy.Timer(rospy.Duration(IMAGE_TIMOUT_DURATION), self.imageTimeout, True)
+#           self.image_timeout = rospy.Timer(rospy.Duration(IMAGE_TIMOUT_DURATION), self.imageTimeoutCB, True)
+          self.image_timeout = threading.Timer(IMAGE_TIMOUT_DURATION, self.imageTimeoutCB)
+          self.image_timeout.start()
           
-          state_msg = ControllerState()
-          state_msg.command = cmd
-          state_msg.fsm = str(self.fsm)
-          state_msg.image_count = self.image_count
-          state_msg.pos_count = self.num_positions 
-          state_msg.rot_count = self.num_rotations
-#           state_msg.gant_pos_x =
-#           state_msg.gant_pos_y =
-#           state_msg.gant_pos_z =
-#           state_msg.gant_rot_r =
-#           state_msg.gant_rot_p =
-#           state_msg.gant_rot_y = 
-          state_msg.tag_family = families[self.curr_family]
-          self.state_pub.publish(state_msg)
+#           state_msg = ControllerState()
+#           state_msg.command = cmd
+#           state_msg.fsm = str(self.fsm)
+#           state_msg.image_count = self.image_count
+#           state_msg.pos_count = self.num_positions 
+#           state_msg.rot_count = self.num_rotations
+#           state_msg.tag_family = families[self.curr_family]
+#           self.state_pub.publish(state_msg)
 
           self.num_images[self.curr_family] += 1  
           self.image_count += 1
@@ -574,44 +581,12 @@ class GantryServer:
           print "\n\rBye!\r",
           self.alive = False
           self.shutdown()
-          rospy.signal_shutdown('Finished')
+#           rospy.signal_shutdown('Finished')
           
           if self.image_timeout is not None:
-            self.timeout.shutdown()
-            self.timeout = None
-          
-#         stateMsg = ControllerState()
-#         stateMsg.pan_angle = self.curr_pose[0]
-#         stateMsg.tilt_angle = self.curr_pose[1]
-#         stateMsg.displayer = self.curr_image
-#         stateMsg.frameID = self.latest_frame_id
-#         stateMsg.encoded_phases = []
-#         stateMsg.fsm = str(self.fsm)
-#         stateMsg.batch_id = self.batch_id
-#         stateMsg.num_detections = self.num_detections
-#         stateMsg.num_images = self.num_images
-#         stateMsg.num_positions = self.num_positions
-          
-        
-#         if self.alive:
-#           self.fsm = State.REQUEST_DISPLAYER
-#         else:
-#           self.fsm = State.IDLE
-#           rospy.loginfo('Waiting for user to reposition camera and press SPACEBAR')
-#           rospy.loginfo('Waiting for user to reposition camera and press SPACEBAR')
-#           rospy.loginfo('Waiting for user to reposition camera and press SPACEBAR')
-
-#       stateMsg = ControllerState()
-#       stateMsg.pan_angle = self.curr_pose[0]
-#       stateMsg.tilt_angle = self.curr_pose[1]
-#       stateMsg.displayer = self.curr_image
-#       stateMsg.frameID = msg.frameID
-#       stateMsg.encoded_phases = encoded_phases
-#       stateMsg.fsm = str(self.fsm)
-#       stateMsg.num_detections = self.num_detections
-#       stateMsg.num_images = self.num_images
-#       stateMsg.num_poses = self.num_poses
-#       self.state_pub.publish(stateMsg)
+#             self.image_timeout.shutdown()
+            self.image_timeout.cancel()
+            self.image_timeout = None
 
 class Usage(Exception):
     def __init__(self, msg):
