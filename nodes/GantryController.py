@@ -364,7 +364,7 @@ def main():
   parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter, # allow for multi-line strings
     description='GantryController Tester',
-    epilog='GANTRY INITIALIZATION SEQUENCE:\n1. turn surge protector on\n2. on the pendant, press F1, F, F, F, F, F1, F1, to go into DEVICE mode\n3. press "ARM POWER" button on main controller box\n4. run this script')
+    epilog='GANTRY INITIALIZATION SEQUENCE:\n1. turn surge protector on\n2. on the pendant, press F1, F, F, F, F1, F1, to go into DEVICE mode\n3. press "ARM POWER" button on main controller box\n4. run this script')
 
   parser.add_argument('-s', '--sim', required=False, help="Simulate commands without connecting to serial device", action='store_true')
   parser.add_argument("-d", "--device", type=str, required=False, help="Path to serial device", default='/dev/ttyS4')

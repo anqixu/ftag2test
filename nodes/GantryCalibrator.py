@@ -22,6 +22,10 @@ from threading import Lock
 
 from GantryController import *
 
+from ftag2.msg import TagDetection
+from ftag2.msg import TagDetections
+
+
 HOST_NAME = ''
 PORT_NUMBER = 8888
 
@@ -74,7 +78,8 @@ class MyHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
       self.log = []
 
   def display(self, msg):
-      print msg
+#       print msg
+      x = 0
 
   def do_HEAD(self):
 #     print self.path
@@ -93,7 +98,7 @@ class MyHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
       self.writeImage()
     elif self.path[:8] == '/images/' and len(self.path) > 9:
       image_path = '../html' + self.path
-      print '\r\n\r\n\r\nIMAGE PATH: ', image_path
+#       print '\r\n\r\n\r\nIMAGE PATH: ', image_path
 #       image_path = tagImage
       if os.path.isfile(image_path):
         f = open(image_path, 'rb')
@@ -140,7 +145,7 @@ class MyHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 #     tagImage = Gantry.tagImages
 #     print self.path
     global tagImage
-    print '\r\nIN WRITE IMAGE: ', tagImage
+#     print '\r\nIN WRITE IMAGE: ', tagImage
 
     try:
       image_rot = 0
@@ -239,24 +244,24 @@ class GantryServer:
   def GantryStateCB(state):
 #     print 'State: ', state
     
-    gantry_pose = PoseStamped()
+    self.mutex.acquire()
+    self.gantry_pose = PoseStamped()
     
-#     self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
-#                     
-#     pose.header.frame_id = frame_id
-#     pose.header.stamp = rospy.Time.now()
-#     self.mutex.acquire()
-#     gantry_pose.pose.position.x = state.x_m
-#     gantry_pose.pose.position.y = state.y_m
-#     gantry_pose.pose.position.z = state.z_m
+    self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
+                     
+    pose.header.frame_id = frame_id
+    pose.header.stamp = rospy.Time.now()
+    gantry_pose.pose.position.x = state.x_m
+    gantry_pose.pose.position.y = state.y_m
+    gantry_pose.pose.position.z = state.z_m
 # #     
-#     quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
-#     self.mutex.release()
+    quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
+    self.mutex.release()
 # 
-#     gantry_pose.pose.orientation.x = quaternion[0]
-#     gantry_pose.pose.orientation.y = quaternion[1]
-#     gantry_pose.pose.orientation.z = quaternion[2]
-#     gantry_pose.pose.orientation.w = quaternion[3]
+    self.gantry_pose.pose.orientation.x = quaternion[0]
+    self.gantry_pose.pose.orientation.y = quaternion[1]
+    self.gantry_pose.pose.orientation.z = quaternion[2]
+    self.gantry_pose.pose.orientation.w = quaternion[3]
 # #     
 #     self.gantry_state_pub.publish(gantry_pose)
 
@@ -269,6 +274,9 @@ class GantryServer:
     self.state_pub = rospy.Publisher('/controller_state', ControllerState, queue_size=10)
     self.string_pub = rospy.Publisher('/ftag2test', String, queue_size=10)
     self.gantry_state_pub = rospy.Publisher('/gantry_state', PoseStamped, queue_size=10)
+    self.tag_det_pub = rospy.Publisher('/tag_det', PoseStamped, queue_size=10)
+
+    self.tag_sub = rospy.Subscriber('/ftag2/detected_tags', TagDetections, self.processTagDetection)
 
     self.last_cmd = ""
     
@@ -345,7 +353,9 @@ class GantryServer:
 #     self.http_req_thread = threading.Thread(target=self.http_req_loop)
 #     self.http_req_thread.start()
         
-    self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True)#, state_cb = self.GantryStateCB)
+#     self.gantry = GantryController(device='/dev/ttyUSB0', verbose = True, force_calibrate = True)#, state_cb = self.GantryStateCB)
+    self.gantry_pose = PoseStamped()
+    
     self.old_pose = [0,0,0,0,0,0]
     self.new_pose = [0,0,0,0,0,0]
 
@@ -400,9 +410,41 @@ class GantryServer:
     self.old_pose = self.new_pose
 
 
+  def processTagDetection(self, msg):
+    if self.fsm == State.WAIT_SHOWING_TAGS:
+    
+      if len(msg.tags) > 0:
+          
+        tag_pose = PoseStamped()
+        tag_msg = msg.tags[0]
+        print "\n\rTag msg: ", tag_msg
+        tag_pose.pose = tag_msg.pose
+        
+        self.tag_det_pub.publish(tag_pose)
+        self.gantry_state_pub.publish(self.gantry_pose)
+
+#     self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
+#                     
+#     pose.header.frame_id = frame_id
+#     pose.header.stamp = rospy.Time.now()
+#     self.mutex.acquire()
+#     gantry_pose.pose.position.x = state.x_m
+#     gantry_pose.pose.position.y = state.y_m
+#     gantry_pose.pose.position.z = state.z_m
+# #     
+#     quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
+#     self.mutex.release()
+# 
+#     gantry_pose.pose.orientation.x = quaternion[0]
+#     gantry_pose.pose.orientation.y = quaternion[1]
+#     gantry_pose.pose.orientation.z = quaternion[2]
+#     gantry_pose.pose.orientation.w = quaternion[3]
+# #     
+
+
   def imageTimeoutCB(self):
     if self.fsm == State.WAIT_SHOWING_TAGS:
-      print "\n\rFINISHED SHOWING TAG"
+#       print "\n\rFINISHED SHOWING TAG"
       self.fsm = State.SHOW_TAGS
       self.image_timeout = None    
       
@@ -416,10 +458,13 @@ class GantryServer:
     while not self.exit:
 #       rospy.sleep(0.01)   
         
-      if not self.alive or self.fsm == State.IDLE or self.fsm == State.WAIT_SHOWING_TAGS:
+      if not self.alive or self.fsm == State.IDLE:
 #         rospy.sleep(0.1)
         time.sleep(0.1)
       
+      if self.fsm == State.WAIT_SHOWING_TAGS:
+        print ""  
+          
 ##############################################################################
       elif self.fsm == State.WAIT_MOVING:
         if not self.MOVING:
@@ -453,8 +498,8 @@ class GantryServer:
             dx = self.PositionGrid[self.num_positions][0] - self.PositionGrid[self.num_positions-1][0]
             dy = self.PositionGrid[self.num_positions][1] - self.PositionGrid[self.num_positions-1][1]
             dz = self.PositionGrid[self.num_positions][2] - self.PositionGrid[self.num_positions-1][2]      
-            self.gantry.write('SPEED 40\r')
-            self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # adjust for biased zero pitch
+#             self.gantry.write('SPEED 40\r')
+#             self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # adjust for biased zero pitch
          
           print '\n\r[Wait] Moving to, ', self.PositionGrid[self.num_positions], '...\r'
           cmd = 'mov: ' +  ', '.join(map(str,self.PositionGrid[self.num_positions]))
@@ -489,12 +534,12 @@ class GantryServer:
             dr = self.RotationGrid[self.num_rotations][0] - self.RotationGrid[self.num_rotations-1][0]
             dp = self.RotationGrid[self.num_rotations][1] - self.RotationGrid[self.num_rotations-1][1]
             dy = self.RotationGrid[self.num_rotations][2] - self.RotationGrid[self.num_rotations-1][2]      
-            self.gantry.write('SPEED 40\r')
-            self.gantry.moveRel(droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy) # adjust for biased zero pitch
+#             self.gantry.write('SPEED 40\r')
+#             self.gantry.moveRel(droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy) # adjust for biased zero pitch
 
           cmd = 'rot: ' +  ', '.join(map(str,self.RotationGrid[self.num_rotations]))
             
-          print '\n\r[Wait] Rotating to, ', self.RotationGrid[self.num_rotations], '...\r'
+#           print '\n\r[Wait] Rotating to, ', self.RotationGrid[self.num_rotations], '...\r'
           
           self.curr_family = 0
           self.num_images = [0,0,0]
@@ -548,7 +593,7 @@ class GantryServer:
           global imagePaths
 #           tagImage = imagePaths[self.curr_family] + '/' + self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
           tagImage = families[self.curr_family] + '/' + self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
-          print "\n\rTagImage: ", tagImage
+#           print "\n\rTagImage: ", tagImage
 #           print '\n\r[Wait] Showing tag. Num image: ', self.num_images, ': ', self.tagImageNames[self.curr_family][self.num_images[self.curr_family]], "\r"
 #           state_msg = 'show: ' +  self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
 #           print state_msg
