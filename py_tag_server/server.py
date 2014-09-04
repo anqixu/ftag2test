@@ -8,7 +8,7 @@ import BaseHTTPServer
 
 
 HOST_NAME = ''
-PORT_NUMBER = 80
+PORT_NUMBER = 8888
 
 
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -59,14 +59,15 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       image_idx = random.randrange(len(tagImages))
       image_filename = tagImages[image_idx]
       image_rot = random.uniform(0, 360)
-      refresh_sec = 5
+      refresh_sec = 50000
       
       # Load template
       f = open('display.htm.template', 'r')
       template = f.read()
       f.close()
       template = template.replace("TEMPLATE_REFRESH_RATE_SEC", str(refresh_sec))
-      template = template.replace("TEMPLATE_IMAGE_ROTATION", str(image_rot))
+#       template = template.replace("TEMPLATE_IMAGE_ROTATION", str(image_rot))
+      template = template.replace("TEMPLATE_IMAGE_ROTATION", str(0))
       template = template.replace("images/robots.jpg", "images/" + str(image_filename))
       template = template.replace("TEMPLATE_TAG_FILENAME", str(image_filename))
       

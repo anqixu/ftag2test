@@ -93,6 +93,7 @@
 
 <script>
 
+var first_in_pose = false;
 var image_name = "";
 function handlePollResponse(req) {
   var elem = document.getElementById('tag_name');  
@@ -101,13 +102,33 @@ function handlePollResponse(req) {
   //if ( req.responseText == "True" )
   if ( req.responseText != "False" )
   {
-    image_name = req.responseText;
+    var first = req.responseText.split(':');
+    console.log(first);
+    if (first[0] == "first")
+    {
+      image_name = first[1];
+      first_in_pose = true;
+    }
+    else 
+   	{
+      image_name = req.responseText;
+      first_in_pose = false;
+    }
     console.log("Image: " + image_name);
     console.log("Timer init!");
     //console.log("Widow: " + window.screen.availWidth);
-    transformImage(600, 0, "white.png");
-    elem.innerHTML = "";
-    setTimeout(changeImage,500);
+    //if ( first_in_pose == true ) 
+    //{
+    //  console.log("Change image no white");
+      changeImage();
+    //}
+    //else
+    //{
+    //  console.log("Change image with white");
+    //  transformImage(600, 0, "white.png");
+    //  elem.innerHTML = "";
+    //  setTimeout(changeImage,500);
+    //}
   }
 };
 
@@ -120,7 +141,8 @@ function changeImage()
   var win_height = window.screen.availHeight;
   var size = Math.min(win_width,win_height);
   console.log("Size: " + size);
-  transformImage(size*(0.8), 0, image_name);
+  transformImage(size*(0.79), 0, image_name);
+  // TAG SIZE: 7.2cm
   var elem = document.getElementById('tag_name');
   elem.innerHTML = image_name;
 }

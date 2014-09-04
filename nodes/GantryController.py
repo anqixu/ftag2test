@@ -11,6 +11,7 @@ import math
 
 from GantryController import *
 gantry = GantryController()
+gantry = GantryController(device='/dev/ttyUSB0', force_calibrate=True)
 gantry.write('SPEED 40\r')
 #gantry.moveRel(0, 0, 0, 0, -9.8, 0) # adjust for biased zero pitch
 #gantry.moveRel(0, 0, 0, -180, 0, 0) # point tool towards croquette; also puts roll at middle of its range

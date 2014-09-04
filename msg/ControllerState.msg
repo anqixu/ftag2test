@@ -17,8 +17,10 @@ int32 image_count
 int32 pos_count
 int32 rot_count
 
-string tag_family
-
 #int32 num_detections
 #int32 num_images
 #int32 num_poses
+
+string tag_family
+int32 num_tag_family
+int32 images_family_count
