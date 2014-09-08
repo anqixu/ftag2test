@@ -53,7 +53,8 @@ rotations_y = [52-45, 52, 52+45, 52+90]
 
 IMAGE_TIMEOUT_DURATION = 3.0
 WHITE_TIMEOUT_DURATION = 0.5
-
+HTTP_SLEEP_TIME = 0.01
+MAIN_THREAD_SLEEP_TIME = 0.05
 
 # rotations_r = [- math.pi, - math.pi/2, 0, math.pi/2, math.pi]
 # rotations_p = [- math.pi, - math.pi/2, 0, math.pi/2, math.pi]
@@ -570,7 +571,7 @@ class GantryServer:
     time.sleep(2)
     while not rospy.is_shutdown():
       self.httpd.handle_request()
-      time.sleep(0.01)    
+      time.sleep(HTTP_SLEEP_TIME)    
 
   def spin(self):
     while not self.exit:
@@ -578,7 +579,7 @@ class GantryServer:
         
       if not self.alive or self.fsm == State.IDLE or self.fsm == State.WAIT_SHOWING_TAGS or self.fsm == State.WAIT_SHOWING_WHITE:
 #         rospy.sleep(0.1)
-        time.sleep(0.05)
+        time.sleep(MAIN_THREAD_SLEEP_TIME)
       
 ##############################################################################
       elif self.fsm == State.WAIT_MOVING:
@@ -586,7 +587,7 @@ class GantryServer:
           self.fsm = State.ROTATE
         else :
 #           rospy.sleep(0.1)
-          time.sleep(0.05)
+          time.sleep(MAIN_THREAD_SLEEP_TIME)
 ##############################################################################        
         
 ##############################################################################
@@ -595,7 +596,7 @@ class GantryServer:
           self.fsm = State.SHOW_TAGS
         else :
 #           rospy.sleep(0.1)
-          time.sleep(0.05)  
+          time.sleep(MAIN_THREAD_SLEEP_TIME)  
 ##############################################################################
 
 ##############################################################################

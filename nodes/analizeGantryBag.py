@@ -1,0 +1,180 @@
+#! /usr/bin/env python
+import rosbag
+import rospy
+import roslib
+import sys
+import getopt
+import os
+import tf
+
+from ftag2test.msg import ControllerState
+from std_msgs.msg import String
+from sensor_msgs.msg import CameraInfo, Image
+from std_msgs.msg import Header
+from ftag2.msg import TagDetection, TagDetections
+from docutils.nodes import topic
+
+class Enum(set):
+  def __getattr__(self, name):
+    if name in self:
+      return name
+    raise AttributeError
+
+State = Enum(['WAITING_FOR_ACK', 'PROCESS_MSG', 'PUBLISH_NOW', 'IDLE'])
+
+class GantryBagAnalizer:
+
+  def __init__(self, path):
+     
+    self.ftag2_sub = rospy.Subscriber('/ftag2/detected_tags',TagDetections,self.processDet)
+    self.image_pub = rospy.Publisher("/camera/image_raw",Image,queue_size=10)
+    self.cam_info_pub = rospy.Publisher("/camera/camera_info",CameraInfo,queue_size=10)
+    rospy.init_node('gantry_bag_analizer')
+    
+    self.fsm = State.IDLE
+    self.found_family = False
+    self.alive = True
+
+    self.bag = rosbag.Bag(path)
+    self.bag_msgs = self.bag.read_messages(topics=['/controller_state', '/camera/image_raw', '/camera/camera_info', '/tag_payload'])
+    
+    self.last_groudntruth_payload = ''
+    self.detected_tag_payload = ''
+    self.cam_info_msg = None
+    
+    self.detection_fails = 0
+    
+#     rospy.Rate(10)
+
+  def shutdown(self):
+    self.bag.close()
+
+  def processDet(self, msg):
+    if self.fsm == State.WAITING_FOR_ACK:
+#       print msg.frameID
+#       print len(msg.tags)
+      if len(msg.tags) > 0:
+        print 'Detected something'
+        print [msg.tags[i].decodedPayloadStr for i in range(0,len(msg.tags))]
+#       else:
+#         print 'Detected nothing'
+#       print msg.decodedPayloadStr
+#       self.detected_tag_payload = msg.decodedPayloadStr
+      self.fsm = State.IDLE
+
+  def detectionTimeout(self, data):
+    self.fsm = State.IDLE
+    self.detection_fails += 1
+    print '\nFalied detections: ', self.detection_fails
+    self.det_Timeout.shutdown()      
+    
+  def spin(self):
+    i = 0
+    while not rospy.is_shutdown():
+      i += 1
+#       if i > 1000: rospy.signal_shutdown('done!')
+      if self.fsm == State.WAITING_FOR_ACK:
+        rospy.sleep(0.0001)
+        
+      elif self.fsm == State.IDLE:
+        try:
+          topic, msg, t = self.bag_msgs.next()
+        except StopIteration:
+          rospy.signal_shutdown('Done reading bag...')
+#         print 'Topic: ', topic
+        self.fsm = State.PROCESS_MSG
+       
+      elif self.fsm == State.PROCESS_MSG and topic == '/controller_state':
+        self.fsm = State.IDLE
+  
+      elif self.fsm == State.PROCESS_MSG and topic == '/tag_payload':
+#         if msg.data[6:13] == '6s2f21b':
+#           self.last_groudntruth_payload = msg.data[14:31]
+#           self.found_family = True
+#           
+#         if msg.data[6:13] == '6s2f22b':
+#           self.last_groudntruth_payload = msg.data[14:31]
+#           self.found_family = True
+#         
+#         if msg.data[6:14] == '6s3f211b':
+#           self.last_groudntruth_payload = msg.data[15:38]
+#           self.found_family = True
+
+        if msg.data[6:12] == '6s5f3b':
+          self.last_groudntruth_payload = msg.data[13:48]
+          self.found_family = True
+        
+#         if msg.data[6:16] == '6s5f33322b':
+#           self.last_groudntruth_payload = msg.data[17:52]
+#           self.found_family = True
+          
+        self.fsm = State.IDLE
+           
+      elif self.fsm == State.PROCESS_MSG and topic == '/camera/camera_info':
+#         print 'Topic: ', topic
+#         print 'FSM: ', self.fsm
+#         print 'Found family: ', self.found_family
+        if self.found_family == True:
+          self.cam_info_msg = msg
+        self.fsm = State.IDLE
+
+      elif self.fsm == State.PROCESS_MSG and topic == '/camera/image_raw':
+        if self.found_family == True:
+#           print 'Topic: ', topic
+#           print 'FSM: ', self.fsm
+#           print 'Found family: ', self.found_family
+#           print 'Publishing image'
+#           time_stamp = rospy.Time.now()
+#           self.cam_info_msg.Header.stamp = time_stamp
+#           msg.Header.stamp = time_stamp
+#           self.cam_info_pub.publish(self.cam_info_msg)
+          self.image_pub.publish(msg)
+          self.found_family = False
+          self.fsm = State.WAITING_FOR_ACK
+#           self.det_Timeout = rospy.Timer(rospy.Duration(0.5), self.detectionTimeout, False)
+          rospy.sleep(0.1)
+        else:
+          self.fsm = State.IDLE
+        
+
+class Usage(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+    try:
+        try:
+            opts, args = getopt.getopt(argv[1:], "hb:", ["help"])
+        except getopt.error, msg:
+             raise Usage(msg)
+
+        path = []
+        for opt in opts:
+          if opt[0] == '-b':
+            path = opt[1]
+        
+        if path is None:
+          print 'Missing -b argument: location of bag file'
+        
+        analizer = GantryBagAnalizer(path)
+        analizer.spin()
+        
+    except Usage, err:
+        print >>sys.stderr, err.msg
+        print >>sys.stderr, "for help use --help"
+        return 2
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+# controller.init():
+# load bag, read until first image that you want, then publish
+# 
+# main: rospy.spin()
+# 
+# controller.handleFTagCallback():
+# - process the detected tag
+# - read bag until next image, and publish
+# - or bag finished, so close bag, and call rospy.shutdown()
