@@ -6,6 +6,7 @@ import sys
 import getopt
 import os
 import tf
+import scipy.io
 
 from ftag2test.msg import ControllerState
 from std_msgs.msg import String
@@ -13,6 +14,38 @@ from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import Header
 from ftag2.msg import TagDetection, TagDetections
 from docutils.nodes import topic
+
+
+class Pose:
+  def __init__(self, msg):
+    self.position_x = msg.position.x
+    self.position_y = msg.position.y
+    self.position_z = msg.position.z
+    self.orientation_x = msg.orientation.x
+    self.orientation_y = msg.orientation.y
+    self.orientation_z = msg.orientation.z
+    self.orientation_w = msg.orientation.w
+
+
+class TagDetection:
+  def __init__(self, msg):
+    self.pose = Pose(msg.pose)
+    self.markerPixelWidth = msg.markerPixelWidth
+    #self.IDString = msg.IDString
+    self.mags = msg.mags
+    self.phases = msg.phases
+    self.phaseVariances = msg.phaseVariances
+    self.bitChunksStr = msg.bitChunksStr
+    self.decodedPayloadStr = msg.decodedPayloadStr
+    
+
+class TagsEntry:
+  def __init__(self, tags_msg, ground_truth_payload):
+    self.tags = []
+    for i in xrange(len(tags_msg.tags)):
+      self.tags.append(TagDetection(tags_msg.tags[i]))
+    self.ground_truth_payload = ground_truth_payload
+
 
 class Enum(set):
   def __getattr__(self, name):
@@ -25,6 +58,7 @@ State = Enum(['WAITING_FOR_ACK', 'PROCESS_MSG', 'PUBLISH_NOW', 'IDLE'])
 class GantryBagAnalizer:
 
   def __init__(self, path):
+    self.matfile = path + '.mat'
      
     self.ftag2_sub = rospy.Subscriber('/ftag2/detected_tags',TagDetections,self.processDet)
     self.image_pub = rospy.Publisher("/camera/image_raw",Image,queue_size=10)
@@ -35,14 +69,19 @@ class GantryBagAnalizer:
     self.found_family = False
     self.alive = True
 
+    print 'Reading from %s' % path
     self.bag = rosbag.Bag(path)
+    print 'Parsing from %s' % path
     self.bag_msgs = self.bag.read_messages(topics=['/controller_state', '/camera/image_raw', '/camera/camera_info', '/tag_payload'])
+    print 'Ready to process images'
     
     self.last_groudntruth_payload = ''
     self.detected_tag_payload = ''
     self.cam_info_msg = None
     
     self.detection_fails = 0
+    
+    self.tag_entries = []
     
 #     rospy.Rate(10)
 
@@ -56,6 +95,7 @@ class GantryBagAnalizer:
       if len(msg.tags) > 0:
         print 'Detected something'
         print [msg.tags[i].decodedPayloadStr for i in range(0,len(msg.tags))]
+        self.tag_entries.append(TagsEntry(msg, self.last_groudntruth_payload))
 #       else:
 #         print 'Detected nothing'
 #       print msg.decodedPayloadStr
@@ -78,9 +118,14 @@ class GantryBagAnalizer:
         
       elif self.fsm == State.IDLE:
         try:
+          if i > 1000: # TODO: remove this
+            raise StopIteration('foo')
           topic, msg, t = self.bag_msgs.next()
         except StopIteration:
           rospy.signal_shutdown('Done reading bag...')
+          
+          print 'Saving to', self.matfile
+          scipy.io.savemat(file_name=self.matfile, mdict={'tag_data': self.tag_entries}, oned_as='row')
 #         print 'Topic: ', topic
         self.fsm = State.PROCESS_MSG
        
