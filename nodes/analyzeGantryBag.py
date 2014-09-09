@@ -100,6 +100,7 @@ class GantryBagAnalizer:
         print 'Detected something'
         print [msg.tags[i].decodedPayloadStr for i in range(0,len(msg.tags))]
         self.tag_entries.append(TagsEntry(msg, self.last_groudntruth_payload, self.last_pos, self.last_rot))
+        self.tag_entries.append(TagsEntry(msg, self.last_groudntruth_payload))
 #       else:
 #         print 'Detected nothing'
 #       print msg.decodedPayloadStr
