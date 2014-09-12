@@ -15,6 +15,7 @@ from std_msgs.msg import Header
 from ftag2.msg import TagDetection, TagDetections
 from docutils.nodes import topic
 
+from tf.transformations import euler_from_quaternion
 
 class Pose:
   def __init__(self, msg):
@@ -29,7 +30,7 @@ class Pose:
 
 class TagDetection:
   def __init__(self, msg):
-    self.pose = Pose(msg.pose)
+#     self.pose = Pose(msg.pose)
     self.markerPixelWidth = msg.markerPixelWidth
     #self.IDString = msg.IDString
     self.mags = msg.mags
@@ -38,16 +39,20 @@ class TagDetection:
     self.bitChunksStr = msg.bitChunksStr
     self.decodedPayloadStr = msg.decodedPayloadStr
     
+    (r, p, y) = tf.transformations.euler_from_quaternion([msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
+    self.pose_quat = [ msg.pose.position.x, msg.pose.position.y, msg.pose.position.z, msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w]
+    self.pose_rpy = [ msg.pose.position.x, msg.pose.position.y, msg.pose.position.z, r, p, y]
+
 
 class TagsEntry:
-  def __init__(self, tags_msg, ground_truth_payload, pos_count, rot_count):
+  def __init__(self, tags_msg, ground_truth_payload, pos_count, rot_count, frameID):
     self.tags = []
     for i in xrange(len(tags_msg.tags)):
       self.tags.append(TagDetection(tags_msg.tags[i]))
     self.ground_truth_payload = ground_truth_payload
-    self.pos_count = pos_count
-    self.rot_count = rot_count
-
+    self.pose_count = pos_count
+    self.rotation_count = rot_count
+    self.frameID = frameID
 
 class Enum(set):
   def __getattr__(self, name):
@@ -94,13 +99,14 @@ class GantryBagAnalizer:
 
   def processDet(self, msg):
     if self.fsm == State.WAITING_FOR_ACK:
-#       print msg.frameID
+      if msg.frameID%50 == 0: 
+        print 'frameID: ', msg.frameID
 #       print len(msg.tags)
       if len(msg.tags) > 0:
-        print 'Detected something'
-        print [msg.tags[i].decodedPayloadStr for i in range(0,len(msg.tags))]
-        self.tag_entries.append(TagsEntry(msg, self.last_groudntruth_payload, self.last_pos, self.last_rot))
-        self.tag_entries.append(TagsEntry(msg, self.last_groudntruth_payload))
+#         print 'Detected something'
+#         print [msg.tags[i].decodedPayloadStr for i in range(0,len(msg.tags))]
+#         print [msg.tags[i].bitChunksStr for i in range(0,len(msg.tags))]
+        self.tag_entries.append(TagsEntry(msg, self.last_groudntruth_payload, self.last_pos, self.last_rot, msg.frameID))
 #       else:
 #         print 'Detected nothing'
 #       print msg.decodedPayloadStr
@@ -116,12 +122,14 @@ class GantryBagAnalizer:
   def spin(self):
     i = 0
     while not rospy.is_shutdown():
-      i += 1
+#       if i%100 == 0: print i
 #       if i > 1000: rospy.signal_shutdown('done!')
       if self.fsm == State.WAITING_FOR_ACK:
         rospy.sleep(0.0001)
         
       elif self.fsm == State.IDLE:
+        if i%10 == 0: print i
+        i+=1
         try:
 #           if i > 1000: # TODO: remove this
 #             raise StopIteration('foo')

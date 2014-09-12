@@ -10,6 +10,7 @@ import tf
 from ftag2test.msg import ControllerState
 from std_msgs.msg import String
 from sensor_msgs.msg import CameraInfo, Image
+from geometry_msgs.msg import PoseStamped
 
 
 def processBag(path):
@@ -20,7 +21,8 @@ def processBag(path):
   payload_pub = rospy.Publisher('/tag_payload', String, queue_size=10) 
   image_pub = rospy.Publisher("/camera/image_raw",Image,queue_size=10)
   cam_info_pub = rospy.Publisher("/camera/camera_info",CameraInfo,queue_size=10)
-      
+  gantry_state_pub = rospy.Publisher('/gantry_state', PoseStamped, queue_size=10)
+        
   i = 0
       
   print '% file: ' + path
@@ -29,42 +31,51 @@ def processBag(path):
   cont = 0
   last_tag = ''
   new_tag = ''
-  cont = -1
+  cont = 0
   tag_id = ""
+  got_new_tag = False
   cont_state_msg = None
   cam_info_msg = None
   for topic, msg, t in bag.read_messages(topics=['/controller_state', '/camera/image_raw', '/camera/camera_info']):
+    if i % 1000 == 0: print i, " topics processed"
     i += 1
-    if i % 5000 == 0: print i, " topics processed"
     if topic == '/controller_state':
 #       print msg.fsm
 #       print msg.command
 #       print msg.image_count
 #       print '\n'
-      if msg.command[0:5] == 'show:':
-#         print msg.command
-        if msg.command[6:] != 'white.png':
-            cont = 0
-            tag_id = msg.command[6:]
-            cont_state_msg = msg
-#             string_pub.publish(msg.command[6:])
-      else:
-        cont = -1
-    if topic == '/camera/image_raw':
-      if cont == -1: continue
-      cont += 1
-      if cont >= 4 :
-#         print cont, ': publishing: ', last_tag
-        payload_pub.publish(tag_id)
+      if msg.fsm == 'SHOW_TAGS':
+        got_new_tag = True
+        tag_id = msg.command[6:]
+        cont_state_msg = msg    
+        cont = 0
         state_pub.publish(cont_state_msg)
-        cam_info_pub.publish(cam_info_msg)  
-        image_pub.publish(msg)
-      if cont > 4:
-        cont = -1  
+#       if msg.command[0:5] == 'show:':
+# #         print msg.command
+#         if msg.command[6:] != 'white.png':
+#             got_new_tag = True
+#             tag_id = msg.command[6:]
+#             cont_state_msg = msg
+# #             string_pub.publish(msg.command[6:])
+      else:
+        got_new_tag = False
+    elif topic == '/camera/image_raw':
+      if got_new_tag == False: 
+          continue
+      else:
+        if cont > 2:
+  #         print cont, ': publishing: ', last_tag
+          payload_pub.publish(tag_id)
+#           cam_info_pub.publish(cam_info_msg)  
+          image_pub.publish(msg)
+        cont += 1
+        if cont > 4:
+          got_new_tag = False  
+          cont = 0
 #         print '\n'
-    if topic == '/camera/camera_info':
+    elif topic == '/camera/camera_info':
       cam_info_msg = msg
-    rospy.sleep(1.0/200.0)
+    rospy.sleep(1.0/500.0)
                 
 #     if topic == '/tag_det':
 #       last_detection_msg = msg

@@ -250,6 +250,9 @@ class Enum(set):
 
 State = Enum(["IDLE", "MOVE", "WAIT_MOVING", "ROTATE", "WAIT_ROTATING", "SHOW_TAGS","WAIT_SHOWING_TAGS", "WAIT_SHOWING_WHITE", "REPORT_FINAL_DETECTION"])
 
+def dist(p0, p1):
+  d = [ (p0[i]-p1[i])**2 for i in range(len(p0)) ]
+  return math.sqrt(sum(d))
 
 class GantryServer:
   # FSM Logic:
@@ -273,7 +276,7 @@ class GantryServer:
     
     self.mutex.acquire()
     self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
-                     
+    self.mutex.release()
 #     pose.header.frame_id = frame_id
 #     pose.header.stamp = rospy.Time.now()
 
@@ -282,7 +285,6 @@ class GantryServer:
     gantry_pose.pose.position.z = state.z_m
 #     
     quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
-    self.mutex.release()
  
     gantry_pose.pose.orientation.x = quaternion[0]
     gantry_pose.pose.orientation.y = quaternion[1]
@@ -317,32 +319,105 @@ class GantryServer:
 #     corners = [ [0.5874900000000001, 0.617505, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004],[0.51729, 0.617505, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004], [0.51729, 0.50478, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004], [0.587325, 0.50475, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004], [0.63732, 0.69246, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004], [0.46206, 0.69246, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004], [0.46206, 0.432315, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004],  [0.637095, 0.4323, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004], [0.6845100000000001, 0.767175, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004], [0.39936, 0.7671600000000001, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004],
 # [0.39939, 0.359505, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004], [0.68436, 0.35946, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004] ] 
     
-    positions_z = [0.2, 0.4, 0.6]
-    num_samp_x = 3
-    num_samp_y = 5
-    infile = open( "calib.p", "rb" )
-    corners = pickle.load(infile)
+    try:
+      infile = open( "gantry_random_sample_sequence.p", "rb" )
+    except IOError:
+      print 'Could not find random sample sequence file. Generating a new sequence...'
+      self.PositionGrid = []
+      listxyz = []
+      listx = []
+      listy = []
+      listz = []
+      sorted_list = []
+      
+      infile = open( "calib.p", "rb" )
+      corners = pickle.load(infile)
+      infile.close()
     
-    self.PositionGrid = []
-    for z_new in positions_z:
-      new_corners = self.linear_approx(z_new, corners)
-      min_x = new_corners[0][0]
-      max_x = new_corners[0][0]
-      min_y = new_corners[0][1]
-      max_y = new_corners[0][1]
-      for corner in new_corners:
-        if corner[0] < min_x:
-          min_x = corner[0]
-        if corner[0] > max_x:
-          max_x = corner[0]
-        if corner[1] < min_y:
-          min_y = corner[1]
-        if corner[1] > max_y:
-          max_y = corner[1]
-      xs = list(numpy.linspace(min_x, max_x, num_samp_x))
-      ys = list(numpy.linspace(min_y, max_y, num_samp_y)) 
-      self.PositionGrid.extend( list( itertools.product( xs, ys, [z_new] ) ) )  
+      min_z = 0.0
+      max_z = 0.8
+    
+      num_xyz_points = 10000
+      cont_rand = 0
+      for i in range(num_xyz_points):
+        z_new = random.uniform(min_z, max_z)
+        #print 'z: ', z_new
+        new_corners = self.linear_approx(z_new, corners)
+        min_x = new_corners[0][0]
+        max_x = new_corners[0][0]
+        min_y = new_corners[0][1]
+        max_y = new_corners[0][1]
+      
+        for corner in new_corners:
+          if corner[0] < min_x:
+            min_x = corner[0]
+          if corner[0] > max_x:
+            max_x = corner[0]
+          if corner[1] < min_y:
+            min_y = corner[1]
+          if corner[1] > max_y:
+            max_y = corner[1]
+   
+        if i == 0:
+          listx.append(1.15/2)
+          listy.append(1.15/2)  
+          listz.append(0.3)
+        else:    
+          listx.append(random.uniform(min_x, max_x))
+          listy.append(random.uniform(min_y, max_y))  
+          listz.append(z_new)
         
+      listxyz = zip(listx,listy,listz)
+      last = listxyz.pop(0)
+      sorted_list = [[last[0], last[1], last[2]]]
+      cont = 0
+      while len(listxyz) > 0:
+        cont += 1
+        if cont % 100 == 0:
+          print 'Cont = ', cont
+        i = 0
+        mind = 99999
+        min_idx = None
+        for current in listxyz:
+          d = dist( current, last )
+          if d < 0.2 :
+            new_min = current
+            min_idx = i
+            break
+          if d < mind :
+            mind = d
+            new_min = current
+            min_idx = i  
+          i += 1
+      
+        if random.uniform(0,1) > 0.9:
+          min_idx = random.randrange(len(listxyz))
+          new_min = listxyz[min_idx]
+          print 'New random min: ', min_idx, ' -> ', new_min
+          cont_rand += 1
+            
+        sorted_list.append([new_min[0], new_min[1], new_min[2]])
+        last = listxyz.pop(min_idx)
+   
+      self.PositionGrid = sorted_list
+      
+      outFile = open( "gantry_random_sample_sequence.p", "wb" )
+      print 'file open'
+      pickle.dump(self.PositionGrid, outFile)
+      print 'pickle dumped'
+      outFile.close()
+      
+      print 'Num. rands: ', cont_rand
+    
+    else:  
+      print 'Found random sample sequence file, loading...'
+      self.PositionGrid = pickle.load(infile)
+      infile.close()
+      
+    print 'Num. points: ', len(self.PositionGrid)
+    
+    
+    print 'file closed'
             
 #     levels = list(self.chunks(corners, 4))
 #     mins_x = []
@@ -389,7 +464,9 @@ class GantryServer:
     self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB)
 #     self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
 #     self.gantry.moveRel(dx_m=1.17, dy_m=0.3, dz_m=0.7, droll_deg=-180.0, dpitch_deg=90.0, dyaw_deg=52.0)
-    self.gantry.moveRel(dx_m=1.17, dy_m=0.0, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
+    self.gantry.write('SPEED 40\r')
+    self.gantry.moveRel(dx_m=1.12, dy_m=0.0, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
+    self.gantry.write('SPEED 60\r')
     self.old_pose = [0,0,0,0,0,0]
     self.new_pose = [0,0,0,0,0,0]
 
@@ -454,8 +531,9 @@ class GantryServer:
 #     maxNumImages[2] = min(len(self.tagImageNames[2]), maxNumArucoImages)
 #     maxNumImages[2] = min(len(self.tagImageNames[2]), maxNumArucoImages)
 #     maxNumImages[2] = min(len(self.tagImageNames[2]), maxNumArucoImages)
-    maxNumImages = [1, 1, 1, 1, 1]
-    
+    maxNumImages = [0, 0, 0, 0, 1]
+    self.max_num_rot_per_position = 1
+
 #     self.PositionGrid = list(itertools.product(positions_x, positions_y, positions_z)) 
     self.RotationGrid = list(itertools.product(rotations_r, rotations_p, rotations_y))
 
@@ -511,15 +589,15 @@ class GantryServer:
     moved = False
     
 #     print '\n\rOld pose = (', self.old_pose, ') \t New_pose = (', self.new_pose;
+    self.mutex.acquire()
     for (a,b) in zip(self.old_pose, self.new_pose):
       if a != b:
         moved = True
         break
-    
     if moved:
       self.MOVING = True
 #       self.gantry_timeout = rospy.Timer(rospy.Duration(0.5), self.gantryStopped, True)
-      self.gantry_timeout = threading.Timer(0.05, self.gantryStopped)
+      self.gantry_timeout = threading.Timer(0.1, self.gantryStopped)
       self.gantry_timeout.start()
       
     else:
@@ -527,6 +605,7 @@ class GantryServer:
 #       self.gantry_timeout.shutdown()
       self.gantry_timeout = None
     self.old_pose = self.new_pose
+    self.mutex.release()
     
 #     print '\r\nMoving = ', moved
 
@@ -584,7 +663,7 @@ class GantryServer:
 ##############################################################################
       elif self.fsm == State.WAIT_MOVING:
         if not self.MOVING:
-          self.fsm = State.ROTATE
+          self.fsm = State.SHOW_TAGS
         else :
 #           rospy.sleep(0.1)
           time.sleep(MAIN_THREAD_SLEEP_TIME)
@@ -611,14 +690,27 @@ class GantryServer:
         
           cmd = ""
 #           if self.num_positions > 0 :  
+          self.mutex.acquire()
           dx = self.PositionGrid[self.num_positions][0] - self.new_pose[0]
           dy = self.PositionGrid[self.num_positions][1] - self.new_pose[1]
-          dz = self.PositionGrid[self.num_positions][2] - self.new_pose[2]      
-          self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # adjust for biased zero pitch
-          print 'Curr pose: ', self.new_pose
+          dz = self.PositionGrid[self.num_positions][2] - self.new_pose[2]   
+          new_r = random.uniform(-360.0, 0.0)
+          new_p = random.uniform( 0.0, 60.0)
+          new_y = random.uniform(0.0 , 360.0)
+          droll = new_r - self.new_pose[3]
+          dpitch = new_p - self.new_pose[4]
+          dyaw = new_y - self.new_pose[5]
+          self.mutex.release()
+          
+          print '\n\Curr. pose: ', self.new_pose
+#           self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy )
+          self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz, droll_deg = droll, dpitch_deg = dpitch, dyaw_deg = dyaw )
+          pose = sum ([ self.PositionGrid[self.num_positions], [new_r, new_p, new_y] ], [] )
+#           print 'Curr pose: ', pose
 #           print '\n\rmoveRel ( dx_m = ', dx, ', dy_m = ', dy, ', dz_m = ', dz, ' )'
-          print '\n\r[Wait] Moving to, ', self.PositionGrid[self.num_positions], '...\r'
-          cmd = 'mov: ' +  ', '.join(map(str,self.PositionGrid[self.num_positions]))
+#           print '\n\r[Wait] Moving to, ', pose, '...\r'
+          cmd = '\rmov: ' +  ', '.join(map(str,pose))
+          print cmd
   
           state_msg = ControllerState()
           state_msg.comm_pos_x = self.PositionGrid[self.num_positions][0]
@@ -647,18 +739,32 @@ class GantryServer:
 ##############################################################################
       elif self.fsm == State.ROTATE:
         print "\n\rNum. rotations", self.num_rotations
-        if self.num_rotations < len(self.RotationGrid) :
+#         if self.num_rotations < len(self.RotationGrid) :
+        if self.num_rotations < self.max_num_rot_per_position :
           # TODO: send rotation command 
                 
-          print 'Curr pose: ', self.new_pose
+          print '\n\rCurr pose: ', self.new_pose
           cmd = ""
-#           if self.num_rotations > 0 :  
-          dr = self.RotationGrid[self.num_rotations][0] - self.new_pose[3]
-          dp = self.RotationGrid[self.num_rotations][1] - self.new_pose[4]
-          dy = self.RotationGrid[self.num_rotations][2] - self.new_pose[5]      
+          
+# roll_deg: -360 - 0 (positive = rotate base counter-clockwise, starting away from croquette)
+# pitch_deg: 0 - 90 (positive = pitch up from ground towards horizontal)
+# yaw_deg: 0 - 360 (positive = rotate hand joint clockwise)
+
+#           if self.num_rotations > 0 :
+          self.mutex.acquire()
+          new_r = random.uniform(-360.0, 0.0)
+          new_p = random.uniform( 0.0, 60.0)
+          new_y = random.uniform(0.0 , 360.0)
+          dr = new_r - self.new_pose[3]
+          dp = new_p - self.new_pose[4]
+          dy = new_y - self.new_pose[5]
+          self.mutex.release()
+#           dr = self.RotationGrid[self.num_rotations][0] - self.new_pose[3]
+#           dp = self.RotationGrid[self.num_rotations][1] - self.new_pose[4]
+#           dy = self.RotationGrid[self.num_rotations][2] - self.new_pose[5]      
           self.gantry.moveRel(droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy) # adjust for biased zero pitch
 
-          cmd = 'rot: ' +  ', '.join(map(str,self.RotationGrid[self.num_rotations]))
+          cmd = '\n\rrot: ' +  ', '.join(map(str,self.RotationGrid[self.num_rotations]))
 #           print '\n\moveRel ( droll_deg = ', dr, ', dpitch_deg = ', dp, ', dyaw_deg = ', dy, ' )'  
           print '\n\r[Wait] Rotating to, ', self.RotationGrid[self.num_rotations]
           
@@ -699,41 +805,32 @@ class GantryServer:
         global maxNumImages
         global tagImage
         global imagePaths
-        print "\n\rnum_images: ", self.num_images;
-        print "\n\rmax num images: ", maxNumImages;
-        print "\n\rcurr family: ", self.curr_family;
+#         print "\n\rnum_images: ", self.num_images;
+#         print "\n\rmax num images: ", maxNumImages;
+#         print "\n\rcurr family: ", self.curr_family;
         if self.curr_family >= 5:
-          print "\r\nFinished images"
+#           print "\r\nFinished images"
 #           tagImage = 'white.png'
 #           NEW_TAG = True
 
           self.curr_family = 0
           self.num_images = [0, 0, 0, 0, 0]
-          self.fsm = State.ROTATE
+#           self.fsm = State.ROTATE
+          self.fsm = State.MOVE
         elif self.num_images[self.curr_family] >= maxNumImages[self.curr_family]:
           self.curr_family += 1
         else :
           if self.curr_family == 0 and self.num_images[self.curr_family] == 0:
             FIRST_IN_POSE = True
           else: FIRST_IN_POSE = False
-          # DISPLAY 1 IMAGE
-#           tagFamily = self.tagImageNames[0]
-#           image_path = tagFamily[0]
-#           print '\n\r', self.tagImageNames;
-#           print '\n\r', tagFamily;
-#           print '\n\r', image_path;
                     
 #           tagImage = imagePaths[self.curr_family] + '/' + self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
-          rand_idx = random.randrange(maxNumImages[self.curr_family])
+          rand_idx = random.randrange(len(self.tagImageNames[self.curr_family]))
 #           tagImage = families[self.curr_family] + '/' + self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
           tagImage = families[self.curr_family] + '/' + self.tagImageNames[self.curr_family][rand_idx]
 
-          #print "\n\rTagImage: ", tagImage
-#           print '\n\r[Wait] Showing tag. Num image: ', self.num_images, ': ', self.tagImageNames[self.curr_family][self.num_images[self.curr_family]], "\r"
-#           state_msg = 'show: ' +  self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
-#           print state_msg
-          
-          cmd = "show: " + self.tagImageNames[self.curr_family][self.num_images[self.curr_family]]
+          cmd = "show: " + self.tagImageNames[self.curr_family][rand_idx]
+          print '\n\r', cmd
           
           state_msg = ControllerState()
           state_msg.command = cmd
