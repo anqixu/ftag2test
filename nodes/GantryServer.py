@@ -461,7 +461,7 @@ class GantryServer:
     self.string_pub = rospy.Publisher('/ftag2test', String, queue_size=10)
     self.gantry_state_pub = rospy.Publisher('/gantry_state', PoseStamped, queue_size=10)
 
-    self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB)
+    self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
 #     self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
 #     self.gantry.moveRel(dx_m=1.17, dy_m=0.3, dz_m=0.7, droll_deg=-180.0, dpitch_deg=90.0, dyaw_deg=52.0)
     self.gantry.write('SPEED 40\r')

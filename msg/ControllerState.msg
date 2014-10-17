@@ -13,7 +13,6 @@ float64 comm_rot_y
 
 string command
 string fsm
-int32 image_count
 int32 pos_count
 int32 rot_count
 
@@ -21,6 +20,10 @@ int32 rot_count
 #int32 num_images
 #int32 num_poses
 
+int32 image_count
+int32 image_count_in_pos
+
+string tag_payload
 string tag_family
 int32 num_tag_family
 int32 images_family_count

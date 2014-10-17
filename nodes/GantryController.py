@@ -219,7 +219,8 @@ class GantryController:
         elif line == '\n\n' or line == '\n\n\r': # Got harmless nwe lines; dismiss
           continue
         else:
-          print '\n!!! Unexpected cmd ack [\n' + line + '\n] a.k.a.', [ord(ch) for ch in line], '\n], expected [\n' + cmd_ack + '\n]\n'
+          x = 'deleteme'
+#           print '\n!!! Unexpected cmd ack [\n' + line + '\n] a.k.a.', [ord(ch) for ch in line], '\n], expected [\n' + cmd_ack + '\n]\n'
 
 
   def write(self, cmd): # i.e. append to write queue

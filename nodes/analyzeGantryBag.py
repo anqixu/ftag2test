@@ -27,7 +27,6 @@ class Pose:
     self.orientation_z = msg.orientation.z
     self.orientation_w = msg.orientation.w
 
-
 class TagDetection:
   def __init__(self, msg):
 #     self.pose = Pose(msg.pose)
