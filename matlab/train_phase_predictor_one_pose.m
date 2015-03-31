@@ -6,8 +6,11 @@ load_file = 1
 filename = 'variables_loaded.mat'
 if load_file == 1
     disp 'Loading file'
-    tag_data = load('/media/dacocp/4DB4FDD92C569739/ftag2bags/multi_image_per_pose/var_predictor_2014-10-28-01-49-05.bag.mat');
+    %tag_data = load('/media/dacocp/4DB4FDD92C569739/ftag2bags/multi_image_per_pose/var_predictor_2014-10-28-01-49-05.bag.mat');
     %tag_data = load('/media/dacocp/4DB4FDD92C569739/ftag2bags/multi_image_per_pose/var_predictor_2014-10-28-19-02-41.bag.mat');
+    %tag_data = load('/media/dacocp/4DB4FDD92C569739/ftag2bags/multi_image_per_pose/several_poses/test2_var_predictor_2014-11-03-17-50-21.bag.mat');
+    %tag_data = load('/media/dacocp/4DB4FDD92C569739/ftag2bags/multi_image_per_pose/several_poses/z1_y0_var_predictor_2014-11-03-16-11-30.bag.mat');
+    tag_data = load('/media/dacocp/4DB4FDD92C569739/ftag2bags/multi_image_per_pose/several_poses/z1_y1_var_predictor_2014-11-04-18-43-49.bag.mat');
     tag_data = tag_data.tag_data;
     disp '1'
     orig_poses = zeros(length(tag_data), 6); for j = 1:6; orig_poses(:, j) = cellfun(@(t) t.tags{1}.pose_rpy(j), tag_data)'; end;
@@ -42,9 +45,9 @@ else
     load(filename);
     disp 'Variables loaded'
 end
-%%
 
 orig_diffs = angleDiff(orig_phases, orig_ground_truth_phases);
+%%
 
 for i = 1:30
     diffs_per_phase = orig_diffs(:,i);
@@ -67,15 +70,15 @@ for i = 1:30
 end
 %%
 
-Titles = {'img_ct', 'tag_ct_i_p', 'det_ct', 'pos_ct', 'num_ss_det', 'frameID', 'poses', 'poses','poses','poses','poses','poses', 'mpw' };
-X = [];
-for i = 1:1000
-    %X = [ X; [ repmat([image_count(i), tag_count_in_pose(i), detection_count(i), pose_count(i), num_successful_detections(i), frameID(i), poses(i,:), markerPixelWidth(i)],4,1) ], [diffs(i,:); ground_truth_decimal(i,:); ground_truth_phases(i,:); phases(i,:) ] ];
-    %X = [ X; [orig_image_count(i), orig_tag_count_in_pose(i), orig_detection_count(i), orig_pose_count(i), orig_num_successful_detections(i), orig_frameID(i), orig_poses(i,:), orig_markerPixelWidth(i)] ];
-    X = [ X; [orig_image_count(i), orig_pose_count(i), orig_poses(i,:), orig_markerPixelWidth(i)] ];
-    %X = [ X; 99999*ones(1,size(X,2)); 99999*ones(1,size(X,2)) ];
-end
-%%
+%Titles = {'img_ct', 'tag_ct_i_p', 'det_ct', 'pos_ct', 'num_ss_det', 'frameID', 'poses', 'poses','poses','poses','poses','poses', 'mpw' };
+%X = [];
+%for i = 1:1000
+%    %X = [ X; [ repmat([image_count(i), tag_count_in_pose(i), detection_count(i), pose_count(i), num_successful_detections(i), frameID(i), poses(i,:), markerPixelWidth(i)],4,1) ], [diffs(i,:); ground_truth_decimal(i,:); ground_truth_phases(i,:); phases(i,:) ] ];
+%    %X = [ X; [orig_image_count(i), orig_tag_count_in_pose(i), orig_detection_count(i), orig_pose_count(i), orig_num_successful_detections(i), orig_frameID(i), orig_poses(i,:), orig_markerPixelWidth(i)] ];
+%    X = [ X; [orig_image_count(i), orig_pose_count(i), orig_poses(i,:), orig_markerPixelWidth(i)] ];
+%    %X = [ X; 99999*ones(1,size(X,2)); 99999*ones(1,size(X,2)) ];
+%end
+%%%
 
 tag_diffs_means = [];
 tag_diffs_stds = [];
@@ -106,6 +109,24 @@ for i = 1:max(orig_image_count)
         tag_pose_count = [ tag_pose_count; curr_pose_count];
     end
 end
+%%
+f_tag_diffs_means = [];
+f_tag_diffs_stds = [];
+for freq = 1:5
+    col_diffs_means = [];
+    col_diffs_stds = [];
+    for row = 1:6
+        freq_col_idx = (freq-1)+5*(row-1)+1;
+        col_diffs_means = [ col_diffs_means; tag_diffs_means(:,freq_col_idx)];
+        col_diffs_stds = [ col_diffs_stds; tag_diffs_stds(:,freq_col_idx)];
+    end
+    f_tag_diffs_means = [ f_tag_diffs_means, col_diffs_means ];
+    f_tag_diffs_stds = [ f_tag_diffs_means, col_diffs_stds ];
+end
+figure(556)
+boxplot(f_tag_diffs_stds)
+figure(667)
+boxplot(f_tag_diffs_means)
 %%
 
 pose_diffs_means = [];
@@ -138,6 +159,13 @@ for i = 1:max(tag_pose_count)
     end
 end
 %%
+
+f_pose_diffs_means = [reshape(pose_diffs_means,5,6)]';
+f_pose_diffs_stds = [reshape(pose_diffs_stds,5,6)]';
+%figure(777)
+%boxplot(f_pose_diffs_stds)
+%figure(888)
+%boxplot(f_pose_diffs_means)
 
 %phases_in_rows_std = [];
 %phases_in_rows_mean = [];
@@ -193,9 +221,10 @@ end
 %%
 
 ph = 180;
-phase_180 = [orig_ground_truth_phases(pose_ground_truth_phases(:,1)==ph,1:5), orig_phases(pose_ground_truth_phases(:,1)==ph,1:5)];
+phase_180 = [orig_ground_truth_phases(orig_ground_truth_phases(:,1)==ph,1:5), orig_phases(orig_ground_truth_phases(:,1)==ph,1:5)];
+phase_180_orig = phase_180(:,6:10);
 %phase_180 = [ground_truth_phases(:,1:5), phases(:,1:5)];
-diff_nomod = phase_180(:,1)-phase_180(:,6);
+%diff_nomod = phase_180(:,1)-phase_180(:,6);
 sync_phase_diff = angleDiff( phase_180(:,1) , phase_180(:,6) );
 %sync_phase_diff = diff_nomod
 %sync_phase_diff( abs(diff_nomod) >180 & diff_nomod >= 0 ) = sync_phase_diff( abs(diff_nomod) >180 & diff_nomod >= 0 ) - 360
@@ -208,11 +237,18 @@ end
 
 phase_180 = [phase_180, new_phases];
 phase_diffs = [ angleDiff( phase_180(:,6:10), phase_180(:,1:5) ), angleDiff( phase_180(:,11:15), phase_180(:,1:5) ) ];
-%phase_diffs = [ mod(phase_180(:,6:10) - phase_180(:,1:5), 360), mod(phase_180(:,11:15)-phase_180(:,1:5),360) ];
 mean(phase_diffs)
 
-
-
+new_phases_vector = [];
+phase_180_vector = [];
+for i = 1:size(new_phases,1)
+    new_phases_vector = [ new_phases_vector; [ [1:5]', [new_phases(i,:)]' ] ];
+    phase_180_vector = [ phase_180_vector; [ [1:5]', [phase_180_orig(i,:)]' ]  ];
+end
+%figure (222)
+%scatter(new_phases_vector(:,1), new_phases_vector(:,2));
+%figure (333)
+%scatter(phase_180_vector(:,1), phase_180_vector(:,2));
 %%
 freq_pos_x = freq_poses(:,1);
 freq_pos_y = freq_poses(:,2);

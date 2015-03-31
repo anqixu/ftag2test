@@ -20,10 +20,18 @@ int32 rot_count
 #int32 num_images
 #int32 num_poses
 
-int32 image_count
-int32 image_count_in_pos
+#int32 image_count
+#int32 image_count_in_pos
+
+int32 total_image_count
+int32 tag_count_in_pose
+int32 detection_count
+int32 num_successful_detections
+
+bool failed_image
+bool failed_pose
 
 string tag_payload
 string tag_family
 int32 num_tag_family
-int32 images_family_count
+#int32 images_family_count
