@@ -14,4 +14,4 @@ if true,
 end
 
 % Add all subfolders of current folder to the top of the search path
-%addpath(genpath('..'));
+addpath(genpath('..'));
