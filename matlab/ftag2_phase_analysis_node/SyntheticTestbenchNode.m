@@ -44,8 +44,9 @@ classdef SyntheticTestbenchNode < handle
       
       % Decode type and payload from filename
       [target.tag_type_id, target.tag_num_slices, target.tag_num_freqs, ...
-         target.tag_bit_pattern, target.tag_phases_vec] = ...
+         target.tag_bit_pattern, target.tag_phases] = ...
          parseTagTypeAndPhases(target.tag_source);
+       target.tag_phases_vec = reshape(target.tag_phases', 1, numel(target.tag_phases));
     end
     
     
@@ -94,20 +95,23 @@ classdef SyntheticTestbenchNode < handle
         'StartDelay', obj.FTAG2_TIMEOUT_SEC, ...
         'TimerFcn', @handleTimeout, 'UserData', obj);
 
-      % Setup logging
-      obj.log_file = sprintf('%s/STN_%s.mat', obj.LOG_DIR, datestr(now, 'yymmdd-HHMMSS-FFF'));
-      progress_seq = obj.progress_seq; %#ok<*PROP,*NASGU>
-      save(obj.log_file, 'progress_seq');
-      
       % Initialize ROS hooks
       %obj.roscore = rosmatlab.roscore(11311); % assume that roscore has been initiated externally
       obj.node = rosmatlab.node('synthetic_testbench_node');
       
-      obj.update_tag_pose_pub = obj.node.addPublisher('/tag_renderer/tag_pose', 'tag_renderer/TagPose.msg');
-      obj.update_tag_source_pub = obj.node.addPublisher('/tag_renderer/tag_source', 'std_msgs/String.msg');
+      obj.update_tag_pose_pub = obj.node.addPublisher('/tag_renderer_node/set_tag_pose', 'tag_renderer/TagPose');
+      obj.update_tag_source_pub = obj.node.addPublisher('/tag_renderer_node/set_tag_source', 'std_msgs/String');
       obj.decoded_tags_sub = obj.node.addSubscriber('/ftag2/detected_tags', 'ftag2_core/TagDetections', 10);
       obj.decoded_tags_sub.addCustomMessageListener({@obj.handleTagsMsg, obj.node.Node});
-      
+
+      % Setup logging
+      obj.log_file = sprintf('%s/STN_%s.mat', obj.LOG_DIR, datestr(now, 'yymmdd-HHMMSS-FFF'));
+      if exist(obj.LOG_DIR, 'dir') ~= 7,
+        obj.node.Node.getLog().warn(sprintf('Logging disabled since LOG_DIR does not exist: %s', obj.LOG_DIR));
+      else
+        obj.saveLog();
+      end
+
       obj.node.Node.getLog().info('SyntheticTestbenchNode initialized');
       
       % Start processing targets
@@ -135,9 +139,20 @@ classdef SyntheticTestbenchNode < handle
     end
     
     
+    function saveLog(obj)
+      if exist('/localdata/anqixu/ftag2/synth_testbench', 'dir') == 7,
+        progress_seq = obj.progress_seq; %#ok<PROP,NASGU>
+        save(obj.log_file, 'progress_seq');
+      end % else silently terminate without saving log
+    end
+    
+    
     function reset(obj, target_seq, ftag2_timeout_sec)
       % Stop processing incoming messages
       obj.shutdown();
+      
+      % TODO: implement argument-less version, where progress_seq's
+      % additional fields are deleted
       
       % Re-parse arguments
       obj.progress_seq = target_seq;
@@ -148,9 +163,11 @@ classdef SyntheticTestbenchNode < handle
         obj.FTAG2_TIMEOUT_SEC = ftag2_timeout_sec;
       end
       
+      % TODO: start new log
+      
       % Re-initialize ROS hooks
-      obj.update_tag_pose_pub = obj.node.addPublisher('/tag_renderer/tag_pose', 'tag_renderer/TagPose.msg');
-      obj.update_tag_source_pub = obj.node.addPublisher('/tag_renderer/tag_source', 'std_msgs/String.msg');
+      obj.update_tag_pose_pub = obj.node.addPublisher('/tag_renderer_node/tag_pose', 'tag_renderer/TagPose');
+      obj.update_tag_source_pub = obj.node.addPublisher('/tag_renderer_node/tag_source', 'std_msgs/String');
       obj.decoded_tags_sub = obj.node.addSubscriber('/ftag2/detected_tags', 'ftag2_core/TagDetections', 10);
       obj.decoded_tags_sub.addCustomMessageListener({@obj.handleTagsMsg, obj.node.Node});
 
@@ -168,7 +185,7 @@ classdef SyntheticTestbenchNode < handle
         % Only publish tag source if different from prev_target
         if isempty(obj.prev_target) || ...
             ~strcmp(obj.prev_target.tag_source, obj.curr_target.tag_source),
-          source_msg = obj.node.newMessage(std_msgs/String');
+          source_msg = obj.node.newMessage('std_msgs/String');
           source_msg.setData(obj.curr_target.tag_source);
           obj.update_tag_source_pub.publish(source_msg);
         end
@@ -271,5 +288,6 @@ end
 
 
 function handleTimeout(timer_obj, ~) % event
-timer_obj.UserData.handleTimeout();
+node_obj = timer_obj.UserData;
+node_obj.handleTimeout();
 end

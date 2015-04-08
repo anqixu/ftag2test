@@ -24,10 +24,17 @@
     
     <param name="republish_delay_sec" value="-1" /> <!-- do not republish -->
     
-    <param name="enable_key_ctrls" value="False" />
+    <param name="enable_key_ctrls" value="True" />
     
     <remap from="~image_raw" to="$(arg cam_name)/image_raw" />
     <remap from="~camera_info" to="$(arg cam_name)/camera_info" />
+    
+    
+    
+    <!-- TEMP SETTINGS -->
+    <param name="default_tag_z_m" value="1.0" />
+    <param name="tag_filename" value="$(find tag_renderer)/nodes/ftag2_6s2f22b_20_00_03_13_30_21.png" />
+    <param name="republish_delay_sec" value="3.0" />
   </node>
   
 
@@ -51,5 +58,14 @@
     <param name="tagBorderMeanMaxThresh" value="120.0" />
     
     <param name="tempTagDecodeStd" value="0.0" /> <!-- WARNING: this completely disables variance-based phase error checker -->
-  </node>  
+
+    <!-- custom params -->
+    <param name="quadFastDetector" value="False" />
+    <param name="quadRefineCorners" value="False" />
+    <param name="quadMaxScans" value="30" />
+    <param name="tagMaxStripAvgDiff" value="15.0" />
+    <param name="tagBorderMeanMaxThresh" value="80.0" />
+    <param name="tagBorderStdMaxThresh" value="40.0" />
+    <param name="numSamplesPerRow" value="1" />
+  </node>
 </launch>
