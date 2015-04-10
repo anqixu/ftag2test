@@ -1,7 +1,7 @@
 %clear all;
 %INIT_WORKSPACE;
 
-target.tag_source = '/home/thalassa/anqixu/indigo_ws/1_ftag/src/tag_renderer/nodes/ftag2_6s2f22b_20_00_03_13_30_21.png';
+target.tag_source = '~/indigo_ws/1_ftag/src/tag_renderer/nodes/ftag2_6s2f22b_20_00_03_13_30_21.png';
 target.tag_width_m = 0.125;
 target.tag_tx_m = 0.0;
 target.tag_ty_m = 0.0;
@@ -21,6 +21,7 @@ end
 % The constructor automatically starts processing the targets
 %node = SyntheticTestbenchNode(target_seq);
 node.reset(target_seq);
+node.waitForIdle();
 
 stats = [];
 failed_ids = [];

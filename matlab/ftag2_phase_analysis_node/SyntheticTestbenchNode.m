@@ -26,6 +26,7 @@ classdef SyntheticTestbenchNode < handle
     
     log_file
     
+    FTAG2_DELAY_SEC
     FTAG2_TIMEOUT_SEC
     LOG_DIR
   end
@@ -110,6 +111,7 @@ classdef SyntheticTestbenchNode < handle
       end
       
       % Initialize internal variables
+      obj.FTAG2_DELAY_SEC = 0.001; % Pausing for a bit to prevent ftag2 node from skipping images RIGHT after processing
       obj.FTAG2_TIMEOUT_SEC = ftag2_timeout_sec;
       obj.ftag2_timer = timer('ExecutionMode', 'singleShot', ...
         'StartDelay', obj.FTAG2_TIMEOUT_SEC, ...
@@ -118,7 +120,7 @@ classdef SyntheticTestbenchNode < handle
       obj.init_target_seq = target_seq;
       obj.ftag2_frame_id_offset = NaN;
       obj.progress_seq = target_seq;
-      obj.progress_seq_i = 0;
+      obj.progress_seq_i = -1;
       obj.prev_target = [];
       obj.curr_target = [];
 
@@ -184,7 +186,7 @@ classdef SyntheticTestbenchNode < handle
       else
         obj.progress_seq = target_seq;
       end
-      obj.progress_seq_i = 0;
+      obj.progress_seq_i = -1;
       obj.prev_target = [];
       obj.curr_target = [];
       obj.ftag2_frame_id_offset = NaN;
@@ -219,8 +221,34 @@ classdef SyntheticTestbenchNode < handle
           sprintf('Target %d/%d timed out (expected_id=%d)', ...
           obj.progress_seq_i, length(obj.progress_seq), obj.curr_target.ftag2_frame_id));
         obj.shutdown();
-        obj.progress_seq_i = 0;
+        obj.progress_seq_i = -2;
         obj.ftag2_frame_id_offset = NaN;
+      end
+    end
+    
+  
+    function waitTillIdle(obj, max_wait_sec)
+      if isnan(obj.ftag2_frame_id_offset) && obj.progress_seq_i < 0,
+        return;
+      else
+        if nargin < 2,
+          max_wait_sec = inf;
+        end
+        t_start = tic;
+        while isnan(obj.ftag2_frame_id_offset),
+          t_elapsed = toc(t_start);
+          if t_elapsed > max_wait_sec,
+            return;
+          end
+          pause(0.001);
+        end
+        while obj.progress_seq_i > 0,
+          t_elapsed = toc(t_start);
+          if t_elapsed > max_wait_sec,
+            return;
+          end
+          pause(0.001);
+        end
       end
     end
   end
@@ -254,6 +282,7 @@ classdef SyntheticTestbenchNode < handle
       tag_pose_msg.setWidth(0.125);
       obj.update_tag_pose_pub.publish(tag_pose_msg);
       obj.node.Node.getLog().info('> Published stub TagPose request');
+      obj.progress_seq_i = 0;
     end
 
     
@@ -265,7 +294,7 @@ classdef SyntheticTestbenchNode < handle
     function publishTarget(obj)
       if obj.progress_seq_i <= 0 || obj.progress_seq_i > length(obj.progress_seq),
         obj.node.Node.getLog().info(sprintf('. SyntheticTestbenchNode finished processing %d targets', length(obj.progress_seq)));
-        obj.progress_seq_i = 0;
+        obj.progress_seq_i = -1;
         obj.ftag2_frame_id_offset = NaN;
         return;
       else
@@ -323,6 +352,7 @@ classdef SyntheticTestbenchNode < handle
         % Start publishing first target
         obj.progress_seq_i = 1;
         obj.curr_target = SyntheticTestbenchNode.preprocessTarget(obj.progress_seq{obj.progress_seq_i}, obj.prev_target);
+        pause(obj.FTAG2_DELAY_SEC);
         obj.publishTarget();
         return;
       
@@ -376,7 +406,7 @@ classdef SyntheticTestbenchNode < handle
       % Increment progress
       if obj.progress_seq_i <= 0 || obj.progress_seq_i >= length(obj.progress_seq),
         obj.node.Node.getLog().info(sprintf('SyntheticTestbenchNode finished processing %d targets', length(obj.progress_seq)));
-        obj.progress_seq_i = 0;
+        obj.progress_seq_i = -1;
         obj.ftag2_frame_id_offset = NaN;
         stop(obj.ftag2_timer);
         return;
@@ -384,6 +414,7 @@ classdef SyntheticTestbenchNode < handle
         obj.progress_seq_i = obj.progress_seq_i + 1;
         obj.prev_target = obj.curr_target;
         obj.curr_target = SyntheticTestbenchNode.preprocessTarget(obj.progress_seq{obj.progress_seq_i}, obj.prev_target);
+        pause(obj.FTAG2_DELAY_SEC);
         obj.publishTarget();
       end
     end
