@@ -26,15 +26,10 @@
     
     <param name="enable_key_ctrls" value="True" />
     
+    <param name="publish_after_source_change" value="False" />
+    
     <remap from="~image_raw" to="$(arg cam_name)/image_raw" />
     <remap from="~camera_info" to="$(arg cam_name)/camera_info" />
-    
-    
-    
-    <!-- TEMP SETTINGS -->
-    <param name="default_tag_z_m" value="1.0" />
-    <param name="tag_filename" value="$(find tag_renderer)/nodes/ftag2_6s2f22b_20_00_03_13_30_21.png" />
-    <param name="republish_delay_sec" value="3.0" />
   </node>
   
 
