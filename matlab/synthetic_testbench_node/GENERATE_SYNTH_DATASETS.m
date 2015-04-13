@@ -1,7 +1,7 @@
-%clear all;
-%INIT_WORKSPACE;
+clear all;
+INIT_WORKSPACE;
 
-target.tag_source = '~/indigo_ws/1_ftag/src/tag_renderer/nodes/ftag2_6s2f22b_20_00_03_13_30_21.png';
+target.tag_source = '/home/thalassa/anqixu/indigo_ws/1_ftag/src/tag_renderer/nodes/ftag2_6s2f22b_20_00_03_13_30_21.png';
 target.tag_width_m = 0.125;
 target.tag_tx_m = 0.0;
 target.tag_ty_m = 0.0;
@@ -19,9 +19,13 @@ for i=0:(NUM_SAMPLES-1),
 end
       
 % The constructor automatically starts processing the targets
-%node = SyntheticTestbenchNode(target_seq);
-node.reset(target_seq);
-node.waitForIdle();
+if run_from_scratch,
+  node = SyntheticTestbenchNode(target_seq, 'yaw sweep for single random tag');
+  node.waitTillIdle();
+else
+  node.reset(target_seq, 'yaw sweep for single random tag');
+  node.waitTillIdle();
+end
 
 stats = [];
 failed_ids = [];
