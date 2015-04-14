@@ -12,3 +12,5 @@
 *.lai
 *.la
 *.a
+
+ftag2_datasets/
