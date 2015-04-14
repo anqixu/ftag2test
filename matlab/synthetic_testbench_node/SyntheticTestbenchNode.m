@@ -407,8 +407,7 @@ classdef SyntheticTestbenchNode < handle
         
       % Save curr_target
       obj.progress_seq{obj.progress_seq_i} = obj.curr_target;
-      progress_seq = obj.progress_seq;
-      save(obj.log_file, 'progress_seq');
+      obj.saveLog();
         
       % Increment progress
       if obj.progress_seq_i <= 0 || obj.progress_seq_i >= length(obj.progress_seq),
