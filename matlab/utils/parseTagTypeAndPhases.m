@@ -4,9 +4,10 @@ function [tag_type_id, num_slices, num_freqs, bit_pattern, gt_phases] = parseTag
     payload_str = tag_type;
     tag_type = regexpi(tag_type, '[0-9]s[0-9]f[0-9]+b', 'match');
     if isempty(tag_type),
-      error('parseGroundTruth:TagType', 'Unrecognized tag_type in filename: %s', tag_type);
+      error('parseGroundTruth:TagType', 'Unrecognized tag_type in filename: %s', payload_str);
     elseif iscell(tag_type) && length(tag_type) ~= 1,
-      error('parseGroundTruth:TagType', 'Multiple tag_type found in filename: %s', tag_type);
+      %warning('parseGroundTruth:TagType', 'Multiple tag_type found in filename: %s', payload_str);
+      tag_type = tag_type{end};
     else
       tag_type = tag_type{1};
     end

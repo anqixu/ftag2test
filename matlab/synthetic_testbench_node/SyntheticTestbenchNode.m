@@ -5,7 +5,7 @@ classdef SyntheticTestbenchNode < handle
   
   properties (SetAccess='protected')
     node
-    synth_img_sub
+    %synth_img_sub
     decoded_tags_sub
     update_tag_pose_pub
     update_tag_source_pub
@@ -116,7 +116,7 @@ classdef SyntheticTestbenchNode < handle
       end
       
       % Initialize internal variables
-      obj.FTAG2_DELAY_SEC = 0.001; % Pausing for a bit to prevent ftag2 node from skipping images RIGHT after processing
+      obj.FTAG2_DELAY_SEC = 0.002; % Pausing for a bit to prevent ftag2 node from skipping images RIGHT after processing
       obj.FTAG2_TIMEOUT_SEC = ftag2_timeout_sec;
       obj.ftag2_timer = timer('ExecutionMode', 'singleShot', ...
         'StartDelay', obj.FTAG2_TIMEOUT_SEC, ...
@@ -140,8 +140,8 @@ classdef SyntheticTestbenchNode < handle
       obj.update_tag_source_pub.Publisher.setLatchMode(0);
       obj.decoded_tags_sub = obj.node.addSubscriber('/ftag2/detected_tags', 'ftag2_core/TagDetections', 10);
       obj.decoded_tags_sub.addCustomMessageListener({@obj.handleTagsMsg, obj.node.Node});
-      obj.synth_img_sub = obj.node.addSubscriber('/camera/image_raw', 'sensor_msgs/Image', 10);
-      obj.synth_img_sub.addCustomMessageListener({@obj.handleSynthImgMsg, obj.node.Node});
+      %obj.synth_img_sub = obj.node.addSubscriber('/camera/image_raw', 'sensor_msgs/Image', 10);
+      %obj.synth_img_sub.addCustomMessageListener({@obj.handleSynthImgMsg, obj.node.Node});
 
       % Setup logging
       obj.log_file = sprintf('%s/STN_%s.mat', obj.LOG_DIR, datestr(now, 'yymmdd-HHMMSS-FFF'));
@@ -215,8 +215,8 @@ classdef SyntheticTestbenchNode < handle
         obj.update_tag_source_pub.Publisher.setLatchMode(0);
         obj.decoded_tags_sub = obj.node.addSubscriber('/ftag2/detected_tags', 'ftag2_core/TagDetections', 10);
         obj.decoded_tags_sub.addCustomMessageListener({@obj.handleTagsMsg, obj.node.Node});
-        obj.synth_img_sub = obj.node.addSubscriber('/camera/image_raw', 'sensor_msgs/Image', 10);
-        obj.synth_img_sub.addCustomMessageListener({@obj.handleSynthImgMsg, obj.node.Node});
+        %obj.synth_img_sub = obj.node.addSubscriber('/camera/image_raw', 'sensor_msgs/Image', 10);
+        %obj.synth_img_sub.addCustomMessageListener({@obj.handleSynthImgMsg, obj.node.Node});
       end
       
       % Publish stub TagPose target to obtain msg and deduce ftag2_frame_id_offset
@@ -226,12 +226,13 @@ classdef SyntheticTestbenchNode < handle
     
     function handleTimeout(obj)
       if obj.progress_seq_i >= 0 && obj.progress_seq_i <= length(obj.progress_seq),
-        obj.node.Node.getLog().error( ...
-          sprintf('Target %d/%d timed out (expected_id=%d)', ...
-          obj.progress_seq_i, length(obj.progress_seq), obj.curr_target.ftag2_frame_id));
+        error_msg = sprintf('Target %d/%d timed out (expected_id=%d)', ...
+          obj.progress_seq_i, length(obj.progress_seq), obj.curr_target.ftag2_frame_id);
+        obj.node.Node.getLog().error(error_msg);
         obj.shutdown();
         obj.progress_seq_i = -1;
         obj.ftag2_frame_id_offset = NaN;
+        error('SyntheticTestbenchNode:TimedOut', error_msg); %#ok<SPERR>
       end
     end
     
@@ -289,14 +290,14 @@ classdef SyntheticTestbenchNode < handle
     end
 
     
-    function handleSynthImgMsg(~, ~, ~, ~) % obj, handle, event, node
-      return;
-    end
+    %function handleSynthImgMsg(~, ~, ~, ~) % obj, handle, event, node
+    %  return;
+    %end
 
     
     function publishTarget(obj)
       if obj.progress_seq_i < 0 || obj.progress_seq_i > length(obj.progress_seq),
-        obj.node.Node.getLog().info(sprintf('v SyntheticTestbenchNode finished processing %d targets', length(obj.progress_seq)));
+        obj.node.Node.getLog().warn(sprintf('! Attempting to publish target %d/%d', obj.progress_seq_i, length(obj.progress_seq)));
         obj.progress_seq_i = -1;
         obj.ftag2_frame_id_offset = NaN;
         return;
@@ -336,7 +337,7 @@ classdef SyntheticTestbenchNode < handle
         % Publish message
         obj.curr_target.ftag2_frame_id = obj.ftag2_frame_id_offset + obj.progress_seq_i; % Indicate waiting to receive decoded ftag2 message
         obj.update_tag_pose_pub.publish(tag_pose_msg);
-        obj.node.Node.getLog().info(sprintf('> Published TagPose request %d/%d', obj.progress_seq_i, length(obj.progress_seq)));
+        obj.node.Node.getLog().info(sprintf('> Published TagPose request %d/%d (expected_id=%d)', obj.progress_seq_i, length(obj.progress_seq), obj.ftag2_frame_id_offset+obj.progress_seq_i));
         
         % Start timer
         stop(obj.ftag2_timer);
@@ -363,7 +364,7 @@ classdef SyntheticTestbenchNode < handle
       
       % Detect out-of-sequence events
       elseif obj.progress_seq_i <= 0,
-        obj.node.Node.getLog().warn(sprintf('! Received ftag2 msg while idle (recv_id=%d)', frameID));
+        %obj.node.Node.getLog().warn(sprintf('! Received ftag2 msg while idle (recv_id=%d)', frameID));
         return;
 
       elseif ~(obj.curr_target.ftag2_frame_id > 0),
@@ -376,6 +377,7 @@ classdef SyntheticTestbenchNode < handle
       end
       
       % Extract first tag
+      stop(obj.ftag2_timer);
       tagsMsg = msg.getTags();
       obj.curr_target.ftag2_num_tags_detected = tagsMsg.size();
       obj.node.Node.getLog().info(sprintf('. Received ftag2 msg (id=%d) with %d tags', frameID, tagsMsg.size()));
@@ -413,7 +415,6 @@ classdef SyntheticTestbenchNode < handle
         obj.node.Node.getLog().info(sprintf('v SyntheticTestbenchNode finished processing %d targets', length(obj.progress_seq)));
         obj.progress_seq_i = -1;
         obj.ftag2_frame_id_offset = NaN;
-        stop(obj.ftag2_timer);
         return;
       else
         obj.progress_seq_i = obj.progress_seq_i + 1;
