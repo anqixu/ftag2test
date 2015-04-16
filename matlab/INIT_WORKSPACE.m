@@ -4,7 +4,7 @@
 restoredefaultpath;
 
 % Add ROS-MATLAB support
-if true,
+if true && ~ispc,
   prevpath = pwd;
   rosmatlabpath = sprintf('%s/toolbox/psp/rosmatlab/', matlabroot);
   cd(rosmatlabpath);

@@ -226,7 +226,7 @@ for trial_i = 1:length(target_trials),
     node.reset(t.target_seq, t.label);
   end
   node.waitTillIdle(inf);
-  dest_filename = sprintf('%s/6s2f22b_%s.mat', trials_dir, t.label);
+  dest_filename = sprintf('%s/%s.mat', trials_dir, t.label);
   copyfile(node.log_file, dest_filename);
 end
 
