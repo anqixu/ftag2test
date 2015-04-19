@@ -1,5 +1,5 @@
 function [tag, phase_ids] = genFTag2Marker6S3F211B(payload_bits, tagWidthPx)
-% per slice: 2 bits for 1Hz (1 used for sig.), 1 bit for 2Hz, 1 bit for 3Hz, 3*6 bits total payload
+% per slice: 2 bits for 1Hz (LSB used for sig.), 1 bit for 2Hz, 1 bit for 3Hz, 3*6 bits total payload
 %
 % DEMO USAGE:
 %{
@@ -36,17 +36,17 @@ end
 phase_bits = zeros(num_slices, num_freqs, max(bits_per_freq));
 
 % phase signature pattern
-phase_bits(1, 1, 1) = 1;
-phase_bits(2, 1, 1) = 0;
-phase_bits(3, 1, 1) = 0;
-phase_bits(4, 1, 1) = 0;
-phase_bits(5, 1, 1) = 1;
-phase_bits(6, 1, 1) = 1;
+phase_bits(1, 1, 2) = 1;
+phase_bits(2, 1, 2) = 0;
+phase_bits(3, 1, 2) = 0;
+phase_bits(4, 1, 2) = 0;
+phase_bits(5, 1, 2) = 1;
+phase_bits(6, 1, 2) = 1;
 
 % Store actual payload
 for s = 1:6,
   base_idx = (s-1)*num_payload_bits_per_slice;
-  phase_bits(s, 1, 2) = payload_bits(base_idx + 1);
+  phase_bits(s, 1, 1) = payload_bits(base_idx + 1);
   phase_bits(s, 2, 1) = payload_bits(base_idx + 2);
   phase_bits(s, 3, 1) = payload_bits(base_idx + 3);
 end;

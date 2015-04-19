@@ -74,14 +74,21 @@ for pose_var_cell = pose_vars,
   figure(fig_i); fig_i = fig_i+1; clf;
   boxplot(diff_vals, 'orientation', 'horizontal', 'extrememode', 'compress');
   xlabel(diff_pose_var, 'interpreter', 'none');
-  ylabel('Boxplot (cropped)');
+  ylabel('Boxplot (CROPPED)');
   ax = axis;
   ax(1) = q1q3(1) - w*(q1q3(2)-q1q3(1));
   ax(2) = q1q3(2) + w*(q1q3(2)-q1q3(1));
   axis(ax);
 end
 
-% TODO: analyze results
+%%
+% *RESULTS:*
+%
+% * tx, ty, tz: normal-distributed small errors
+% * rx, ry (tag pitch / yaw, a.k.a. out-of-plane rotations):
+%   normal-distributed small errors; but *unexpectedly high outlier count*
+% * rz (tag roll, a.k.a. in-plane rotation):
+%       normal-distributed small errors; but *few outliers near +/- 180'*
 
 %% Display mis-detection and multi-detections
 fprintf('%11s:\t%5s\t%5s\t%5s\n', 'TRIAL', '0-DET', 'N-DET', 'OBS');

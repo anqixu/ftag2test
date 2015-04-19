@@ -6,9 +6,10 @@ INIT_WORKSPACE;
 %% Specify configuration and initialize constants
 images_dir = '../ftag2_datasets/6S2F22B_manual_set/';
 trials_dir = '../ftag2_datasets/trials/';
+tag_type = '6s2f22b';
 rng_seed = 1729;
 
-sweep_num_samples = 2000;
+sweep_num_samples = 100;
 
 tag_width_m = 0.125;
 
@@ -196,22 +197,22 @@ end
 target_trials = {};
 clear t;
 t.target_seq = targets_sweep_tx;
-t.label = '6s2f22b_sweep_tx';
+t.label = strcat(tag_type, '_sweep_tx');
 target_trials{length(target_trials)+1} = t;
 t.target_seq = targets_sweep_ty;
-t.label = '6s2f22b_sweep_ty';
+t.label = strcat(tag_type, '_sweep_ty');
 target_trials{length(target_trials)+1} = t;
 t.target_seq = targets_sweep_tz;
-t.label = '6s2f22b_sweep_tz';
+t.label = strcat(tag_type, '_sweep_tz');
 target_trials{length(target_trials)+1} = t;
 t.target_seq = targets_sweep_pitch;
-t.label = '6s2f22b_sweep_pitch';
+t.label = strcat(tag_type, '_sweep_pitch');
 target_trials{length(target_trials)+1} = t;
 t.target_seq = targets_sweep_yaw;
-t.label = '6s2f22b_sweep_yaw';
+t.label = strcat(tag_type, '_sweep_yaw');
 target_trials{length(target_trials)+1} = t;
 t.target_seq = targets_sweep_roll;
-t.label = '6s2f22b_sweep_roll';
+t.label = strcat(tag_type, '_sweep_roll');
 target_trials{length(target_trials)+1} = t;
 
 %% Run trials

@@ -14,13 +14,13 @@
     <param name="scene_height_px" value="600" />
     <param name="scene_fovy_deg" value="45.0" />
 
-    <param name="default_tag_x_m" value="0.0" />
-    <param name="default_tag_y_m" value="0.0" />
-    <param name="default_tag_z_m" value="1.0" />
     <param name="default_tag_width_m" value="0.125" /> <!-- note: account for tag image border manually here -->
-    <param name="default_tag_roll_deg" value="0.0" />
-    <param name="default_tag_pitch_deg" value="0.0" />
-    <param name="default_tag_yaw_deg" value="0.0" />
+    <param name="default_tag_tx_m" value="0.0" />
+    <param name="default_tag_ty_m" value="0.0" />
+    <param name="default_tag_tz_m" value="1.0" />
+    <param name="default_tag_rz_deg" value="0.0" />
+    <param name="default_tag_ry_deg" value="0.0" />
+    <param name="default_tag_rz_deg" value="0.0" />
     
     <param name="republish_delay_sec" value="-1" /> <!-- do not republish -->
     
@@ -38,7 +38,7 @@
   
   <node pkg="nodelet" type="nodelet" name="$(arg nodelet_name)"
         args="load ftag2/ftag2_reader_nodelet nodelet_manager">
-    <!-- tag_type must have numerical value, with #S#F###B format (exception: 653=6S5F3B old variant) -->
+    <!-- tag_type must have numerical value, with #S#F###B format -->
     <!-- param name="tag_type" type="int" value="6533322" / -->
     <param name="tag_type" type="int" value="6222" /> 
         
@@ -50,17 +50,15 @@
     
     <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
     
-    <param name="tagBorderMeanMaxThresh" value="120.0" />
-    
     <param name="tempTagDecodeStd" value="0.0" /> <!-- WARNING: this completely disables variance-based phase error checker -->
 
     <!-- custom params -->
     <param name="quadFastDetector" value="False" />
     <param name="quadRefineCorners" value="False" />
-    <param name="quadMaxScans" value="30" />
+    <param name="quadMaxScans" value="50" />
     <param name="tagMaxStripAvgDiff" value="15.0" />
-    <param name="tagBorderMeanMaxThresh" value="80.0" />
-    <param name="tagBorderStdMaxThresh" value="40.0" />
+    <param name="tagBorderMeanMaxThresh" value="125.0" /> <!-- lax border check okay for synthetic images -->
+    <param name="tagBorderStdMaxThresh" value="90.0" /> <!-- lax border check okay for synthetic images -->
     <param name="numSamplesPerRow" value="1" />
   </node>
 </launch>
