@@ -116,7 +116,7 @@ classdef SyntheticTestbenchNode < handle
       end
       
       % Initialize internal variables
-      obj.FTAG2_DELAY_SEC = 0.002; % Pausing for a bit to prevent ftag2 node from skipping images RIGHT after processing
+      obj.FTAG2_DELAY_SEC = 0.003; % Pausing for a bit to prevent ftag2 node from skipping images RIGHT after processing
       obj.FTAG2_TIMEOUT_SEC = ftag2_timeout_sec;
       obj.ftag2_timer = timer('ExecutionMode', 'singleShot', ...
         'StartDelay', obj.FTAG2_TIMEOUT_SEC, ...

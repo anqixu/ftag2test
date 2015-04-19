@@ -9,7 +9,7 @@ trials_dir = '../ftag2_datasets/trials/';
 rng_seed = 1729;
 
 num_rand_poses = 1000;
-num_rand_tags_per_pose = 10;
+num_rand_tags_per_pose = 20;
 
 tag_width_m_dft = 0.125; % WARNING: do not change tag size since this complicates FTag2 decoder node
 %tag_width_m_min = 0.1;
@@ -64,8 +64,9 @@ for pose_i = 1:num_rand_poses,
   t.tag_ry_deg = rand()*(tag_yaw_deg_max-tag_yaw_deg_min) + tag_yaw_deg_min;
   t.tag_rz_deg = rand()*(tag_roll_deg_max-tag_roll_deg_min) + tag_roll_deg_min;
   
+  rand_ids = randperm(num_tag_files);
   for tag_j = 1:num_rand_tags_per_pose,
-    t.tag_source = fullfile(pwd, images_dir, tag_files(randi(num_tag_files)).name);
+    t.tag_source = fullfile(pwd, images_dir, tag_files(rand_ids(tag_j)).name);
     target_seq{length(target_seq)+1} = t; %#ok<*SAGROW>
   end
 end

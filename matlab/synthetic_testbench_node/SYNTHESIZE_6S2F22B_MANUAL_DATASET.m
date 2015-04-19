@@ -8,13 +8,13 @@ images_dir = '../ftag2_datasets/6S2F22B_manual_set/';
 trials_dir = '../ftag2_datasets/trials/';
 rng_seed = 1729;
 
-sweep_num_samples = 1000;
+sweep_num_samples = 2000;
 
 tag_width_m = 0.125;
 
 tag_tx_m_dft = 0.;
-tag_tx_m_min = -0.5;
-tag_tx_m_max = 0.5;
+tag_tx_m_min = -0.55;
+tag_tx_m_max = 0.55;
 
 tag_ty_m_dft = 0.;
 tag_ty_m_min = -0.4;
