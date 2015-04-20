@@ -9,8 +9,8 @@ trials_dir = '../ftag2_datasets/trials/';
 tag_type = '6s2f22b';
 rng_seed = 1729;
 
-num_rand_poses = 100;
-num_rand_tags_per_pose = 5;
+num_rand_poses = 2000;
+num_rand_tags_per_pose = 10;
 
 tag_width_m_dft = 0.125; % WARNING: do not change tag size since this complicates FTag2 decoder node
 %tag_width_m_min = 0.1;

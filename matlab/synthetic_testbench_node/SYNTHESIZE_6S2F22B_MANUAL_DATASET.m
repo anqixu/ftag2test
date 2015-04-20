@@ -9,7 +9,7 @@ trials_dir = '../ftag2_datasets/trials/';
 tag_type = '6s2f22b';
 rng_seed = 1729;
 
-sweep_num_samples = 100;
+sweep_num_samples = 2000;
 
 tag_width_m = 0.125;
 
