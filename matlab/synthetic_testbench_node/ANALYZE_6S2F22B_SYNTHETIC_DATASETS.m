@@ -38,6 +38,7 @@ if process_raw_trials,
     trials.(trial_ids{i}) = processProgressSeq(progress_seq, trial_ids{i});
   end
   save(all_trials_file, 'trials');
+  fprintf('-Finished processing all raw files.\n');
 else
   load(all_trials_file);
 end
@@ -47,11 +48,10 @@ fprintf('%11s:\t%9s\t%9s\t%6s\n', 'TRIAL', '0-DET', 'N-DET', 'OBS');
 for trial_i = 1:length(trial_ids),
   trial_id = trial_ids{trial_i};
   trial = trials.(trial_id);
-  num_zero_det = size(trial.zero_detection_raw_IDs, 1);
-  num_multi_det = size(trial.multi_detection_raw_IDs, 1);
+  num_zero_det = sum(trial.seqds.ftag2_num_tags_detected == 0);
+  num_multi_det = sum(trial.seqds.ftag2_num_tags_detected > 1);
+  num_total_det = size(trial.seqds, 1);
   num_obs = size(trial.ds, 1);
-  num_one_det = num_obs/trial.tag_num_slices/trial.tag_num_freqs;
-  num_total_det = num_zero_det + num_one_det + num_multi_det;
   fprintf('%11s:\t%4d (%2.0f%%)\t%4d (%2.0f%%)\t%6d\n', trial_id, ...
     num_zero_det, num_zero_det/num_total_det*100, ...
     num_multi_det, num_multi_det/num_total_det*100, ...
@@ -63,18 +63,10 @@ fprintf('\n');
 
 for trial_i = 1:(length(trial_ids)-1), % skip random
   trial_id = trial_ids{trial_i};
+  seqds = trials.(trial_id).seqds;
   feature_var = sweep_feature_vars{trial_i};
-  ind_trial_file = sprintf('%s/trials/6s2f22b_%s.mat', dataset_dir, trial_id);
   
-  clear progress_seq;
-  load(ind_trial_file);
-  
-  num_seq = size(progress_seq, 2);
-  num_detect_per_feature_seq = zeros(num_seq, 2);
-  for seq_i = 1:num_seq,
-    s = progress_seq{seq_i};
-    num_detect_per_feature_seq(seq_i, :) = [s.(feature_var), s.ftag2_num_tags_detected];
-  end
+  num_detect_per_feature_seq = [seqds.(feature_var), seqds.ftag2_num_tags_detected];
   
   zero_det_idx = (num_detect_per_feature_seq(:, 2) == 0);
   one_det_idx = (num_detect_per_feature_seq(:, 2) == 1);
@@ -87,7 +79,7 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
   end
   
   % Plot detection counts over (sweep var vs id_seq)
-  seq_range = 1:num_seq;
+  seq_range = 1:size(seqds, 1);
   figure(fig_i); fig_i = fig_i+1; clf;
   hold on;
   plot(-1, 0, 'rx', 'MarkerSize', 6);
@@ -140,30 +132,24 @@ end
 
 %% Compute 0-detections in random set
 
-% Load raw data for random trial
-rand_trial_file = sprintf('%s/trials/6s2f22b_random.mat', dataset_dir);
-load(rand_trial_file);
-random_zero_det_poses = [];
+zero_idx = (trials.random.seqds.ftag2_num_tags_detected == 0);
 NUM_TAGS_PER_RANDOM_POSE = 10;
-for i = 1:length(progress_seq)/NUM_TAGS_PER_RANDOM_POSE,
-  num_zero_detects = 0;
-  pose_vecs = [];
-  
-  for j = 1:NUM_TAGS_PER_RANDOM_POSE,
-    s = progress_seq{NUM_TAGS_PER_RANDOM_POSE*(i-1)+j};
-    if isfield(s, 'ftag2_num_tags_detected') && s.ftag2_num_tags_detected == 0,
-      num_zero_detects = num_zero_detects + 1;
-      if isempty(pose_vecs),
-        pose_vecs = [s.tag_tx_m, s.tag_ty_m, s.tag_tz_m, ...
-          s.tag_rx_deg, s.tag_ry_deg, s.tag_rz_deg];
-      end
-    end
-  end
-  
-  if num_zero_detects > 0,
-    random_zero_det_poses = [random_zero_det_poses; ...
-      num_zero_detects, pose_vecs]; %#ok<AGROW>
-  end
+sds = trials.random.seqds(zero_idx, :);
+group_sids = floor((sds.id_seq-1)/NUM_TAGS_PER_RANDOM_POSE);
+unique_group_sids = unique(group_sids);
+random_zero_det_poses = zeros(length(unique_group_sids), 7);
+for gsid_idx = 1:length(unique_group_sids),
+  target_idcs = find(group_sids == unique_group_sids(gsid_idx));
+  sampleds = sds(target_idcs(1), :);
+  random_zero_det_poses(gsid_idx, :) = [...
+    length(target_idcs), ...
+    sampleds.tag_tx_m, ...
+    sampleds.tag_ty_m, ...
+    sampleds.tag_tz_m, ...
+    sampleds.tag_rx_deg, ...
+    sampleds.tag_ry_deg, ...
+    sampleds.tag_rz_deg, ...
+    ];
 end
 
 rds = mat2dataset(random_zero_det_poses, 'VarNames', { ...
@@ -175,6 +161,7 @@ rds = mat2dataset(random_zero_det_poses, 'VarNames', { ...
   'tag_ry_deg', ...
   'tag_rz_deg', ...
   });
+%}
 
 %% Visualize 0-detections in random set as fn of tag pose
 
@@ -266,10 +253,23 @@ end
 %       during sweep
 % * rx & ry (tag pitch & yaw, a.k.a. out-of-plane rotations):
 %       small, zero-mean errors; low-rate linear dependency on sweep var &
-%       high-rate sawtooth pattern hypothesized due to pixel-level jitter;
-%       *few extremely large outliers (why? maybe due to solvePnP?)*
+%       high-rate sawtooth pattern hypothesized due to pixel-level jitter
 % * rz (tag roll, a.k.a. in-plane rotation): small, zero-mean errors;
 %      no visual dependence on sweep var
+%
+% *OUTLIERS:*
+%
+% * diff_rx_deg near -70': when tag is pitched sufficiently away (~75'),
+%      mag+phase signature is mistakenly detected in rotated tag image;
+%      simple fix is to threshold these border cases; cleaner fix might
+%      require comparing magnitude spectrums for rotated and non-rotated
+%      tag and determining better filtering / selection criteria
+%      (maybe including phase error as well);
+%      *payload phases are affected by this error!*
+% * diff_ry_deg near -150': see (diff_rx_deg near -70')
+% * diff_rx_deg near 27': when tag is pitched at very small angle (~15'),
+%      weirdly FTag2 recognizes it with a different pitch (~-14'); although
+%      payload phases are not affected
 
 %% Plot tag pose accuracies for random set
 

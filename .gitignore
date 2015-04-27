@@ -14,4 +14,4 @@
 *.a
 
 ftag2_datasets/
-matlab/*/html/
+matlab/*/html

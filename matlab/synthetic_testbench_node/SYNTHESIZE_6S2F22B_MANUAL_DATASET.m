@@ -23,7 +23,7 @@ tag_ty_m_max = 0.4;
 
 tag_tz_m_dft = 1.0;
 tag_tz_m_min = 0.1;
-tag_tz_m_max = 2.0;
+tag_tz_m_max = 2.5;
 
 tag_pitch_deg_dft = 0.;
 tag_pitch_deg_min = -85.0;

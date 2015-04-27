@@ -371,6 +371,14 @@ classdef SyntheticTestbenchNode < handle
         obj.node.Node.getLog().warn(sprintf('! Received spurious ftag2 msg (expect_id=%d, recv_id=%d)', obj.curr_target.ftag2_frame_id, frameID));
         return;
       
+      elseif obj.curr_target.ftag2_frame_id < frameID,
+        obj.node.Node.getLog().warn(sprintf('! Received future ftag2 msg (expect_id=%d, recv_id=%d)', obj.curr_target.ftag2_frame_id, frameID));
+        
+        % Resend current TagPose target
+        obj.ftag2_frame_id_offset = frameID + 1 - obj.progress_seq_i;
+        obj.publishTarget();
+        return;
+        
       elseif obj.curr_target.ftag2_frame_id ~= frameID,
         obj.node.Node.getLog().warn(sprintf('! Received unexpected ftag2 msg (expect_id=%d, recv_id=%d)', obj.curr_target.ftag2_frame_id, frameID));
         return;
@@ -388,7 +396,8 @@ classdef SyntheticTestbenchNode < handle
         orientationMsg = poseMsg.getOrientation();
         
         % Parse tag pose and payload
-        obj.curr_target.ftag2_width_px = tagMsg.getMarkerPixelWidth();
+        %obj.curr_target.ftag2_width_m = tagMsg.getMarkerWidthM(); % redundant since equal to tag_width_m
+        obj.curr_target.ftag2_width_px = tagMsg.getMarkerWidthPx();
         obj.curr_target.ftag2_tx_m = positionMsg.getX();
         obj.curr_target.ftag2_ty_m = positionMsg.getY();
         obj.curr_target.ftag2_tz_m = positionMsg.getZ();
@@ -399,7 +408,8 @@ classdef SyntheticTestbenchNode < handle
         obj.curr_target.ftag2_rx_deg = rot_xyz_rad(1)*degrees;
         obj.curr_target.ftag2_ry_deg = rot_xyz_rad(2)*degrees;
         obj.curr_target.ftag2_rz_deg = rot_xyz_rad(3)*degrees;
-        obj.curr_target.ftag2_tag_img_rot = tagMsg.getTagImgRot();
+        obj.curr_target.ftag2_tag_img_rot = tagMsg.getMarkerRot90();
+        obj.curr_target.ftag2_tag_corners = tagMsg.getMarkerCornersPx()';
         obj.curr_target.ftag2_mags_vec = tagMsg.getMags()';
         obj.curr_target.ftag2_phases_vec = tagMsg.getPhases()';
         obj.curr_target.ftag2_payload_str = char(tagMsg.getDecodedPayloadStr());
