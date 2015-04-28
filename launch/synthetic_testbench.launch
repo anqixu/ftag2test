@@ -14,7 +14,7 @@
     <param name="scene_height_px" value="600" />
     <param name="scene_fovy_deg" value="45.0" />
 
-    <param name="default_tag_width_m" value="0.125" /> <!-- note: account for tag image border manually here -->
+    <param name="default_tag_width_m" value="0.1" />
     <param name="default_tag_tx_m" value="0.0" />
     <param name="default_tag_ty_m" value="0.0" />
     <param name="default_tag_tz_m" value="1.0" />
@@ -55,7 +55,7 @@
     <!-- custom params -->
     <param name="quadFastDetector" value="False" />
     <param name="quadRefineCorners" value="False" />
-    <param name="quadMaxScans" value="50" />
+    <param name="quadMaxScans" value="200" />
     <param name="tagMaxStripAvgDiff" value="15.0" />
     <param name="tagBorderMeanMaxThresh" value="125.0" /> <!-- lax border check okay for synthetic images -->
     <param name="tagBorderStdMaxThresh" value="90.0" /> <!-- lax border check okay for synthetic images -->

@@ -10,13 +10,15 @@ end
 tagWidthPx = size(tag, 2);
 if size(tag, 1) ~= tagWidthPx,
   error('padTagBorder:InvalidArg', 'Input tag image is not square');
-elseif tagWidthPx >= tagPaddedWidthPx,
-  erorr('padTagBorder:InvalidArg', 'Input tag image has larger width than specified padded width');
+elseif tagWidthPx > tagPaddedWidthPx,
+  error('padTagBorder:InvalidArg', 'Input tag image has larger width than specified padded width');
+elseif tagWidthPx == tagPaddedWidthPx,
+  tagPadded = tag;
+else
+  tagPadded = padPxVal*ones(tagPaddedWidthPx, tagPaddedWidthPx, 'uint8');
+  padSideWidthPx = ceil((tagPaddedWidthPx-tagWidthPx)/2)-1;
+  padRange = padSideWidthPx+(1:tagWidthPx);
+  tagPadded(padRange, padRange) = tag;  
 end
-
-tagPadded = padPxVal*ones(tagPaddedWidthPx, tagPaddedWidthPx, 'uint8');
-padSideWidthPx = ceil((tagPaddedWidthPx-tagWidthPx)/2)-1;
-padRange = padSideWidthPx+(1:tagWidthPx);
-tagPadded(padRange, padRange) = tag;
 
 end

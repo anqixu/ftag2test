@@ -7,14 +7,12 @@ INIT_WORKSPACE;
 images_dir = '../ftag2_datasets/6S2F22B_random_set/';
 trials_dir = '../ftag2_datasets/trials/';
 tag_type = '6s2f22b';
-rng_seed = 1730;
+rng_seed = 1731;
 
 num_rand_poses = 2000;
 num_rand_tags_per_pose = 10;
 
-tag_width_m_dft = 0.125; % WARNING: do not change tag size since this complicates FTag2 decoder node
-%tag_width_m_min = 0.1;
-%tag_width_m_max = 0.2;
+tag_width_m_dft = 0.1; % WARNING: do not change tag size since this complicates FTag2 decoder node
 
 %tag_tx_m_dft = 0.;
 tag_tx_m_min = -0.3;

@@ -7,11 +7,11 @@ INIT_WORKSPACE;
 images_dir = '../ftag2_datasets/6S2F22B_manual_set/';
 trials_dir = '../ftag2_datasets/trials/';
 tag_type = '6s2f22b';
-rng_seed = 1729;
+rng_seed = 1731;
 
 sweep_num_samples = 2000;
 
-tag_width_m = 0.125;
+tag_width_m = 0.1;
 
 tag_tx_m_dft = 0.;
 tag_tx_m_min = -0.55;
@@ -26,12 +26,12 @@ tag_tz_m_min = 0.1;
 tag_tz_m_max = 2.5;
 
 tag_pitch_deg_dft = 0.;
-tag_pitch_deg_min = -85.0;
-tag_pitch_deg_max = 85.0;
+tag_pitch_deg_min = -60.0; % WARNING: beyond 75' sometimes sig+mag mis-detected as rotated angle
+tag_pitch_deg_max = 60.0; % also, beyond 65', significant phase errors could result due to inaccurate quad corners
 
 tag_yaw_deg_dft = 0.;
-tag_yaw_deg_min = -85.0;
-tag_yaw_deg_max = 85.0;
+tag_yaw_deg_min = -60.0;
+tag_yaw_deg_max = 60.0;
 
 tag_roll_deg_dft = 0.;
 tag_roll_deg_min = 0.;

@@ -38,23 +38,104 @@ if process_raw_trials,
     trials.(trial_ids{i}) = processProgressSeq(progress_seq, trial_ids{i});
   end
   save(all_trials_file, 'trials');
-  fprintf('-Finished processing all raw files.\n');
+  fprintf('\nFINISHED processing all raw files.\n');
 else
   load(all_trials_file);
 end
 
+%% Apply filters to remove innaccurately detected poses
+%
+% * when tag is pitched sufficiently away (OOP > 70'), mag+phase signature
+%      is mistakenly detected in rotated tag image;
+%      simple fix is to threshold these border cases; cleaner fix might
+%      require comparing magnitude spectrums for rotated and non-rotated
+%      tag and determining better filtering / selection criteria
+%      (maybe including phase error as well);
+%      *payload phases are affected by this error!*
+% * for tag-in-image with parallel edges, there are multiple 3D poses
+%      that project down into these same tag-in-image pose (e.g. +15' pitch
+%      vs -15' pitch);
+%      possible resolutions: A - seed solvePnP with previous tracked pose,
+%      B - reject excessively large pose jumps (in OOP angle) in tracker
+
+APPLY_FILTER = true;
+
+SWEEP_ANGLE_MIN_DEG = 2;
+RANDOM_RXY_MAX_DEG = 9;
+QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX = 2;
+
+% Initialize exclude_idx vectors
+for trial_i = 1:length(trial_ids),
+  trial_id = trial_ids{trial_i};
+  trials.(trial_id).seqds_exclude_idx = false(size(trials.(trial_id).seqds, 1), 1);
+  trials.(trial_id).ds_exclude_idx = false(size(trials.(trial_id).ds, 1), 1);
+end
+
+% Filter sweep trials to remove multi-3D-pose ambiguities
+for trial_i = 1:(length(trial_ids) - 1), % skip random
+  feature_var = sweep_feature_vars{trial_i};
+  if isempty(strfind(feature_var, 'rx')) && ...
+      isempty(strfind(feature_var, 'ry')),
+    continue; % only filter rx and ry
+  end
+  if ~APPLY_FILTER,
+    continue;
+  end
+
+  trial_id = trial_ids{trial_i};
+  trial = trials.(trial_id);
+
+  parallel_edged_quad_seqds_idx = (abs(trial.seqds.(feature_var)) > 2*SWEEP_ANGLE_MIN_DEG) & ...
+  (abs(trial.seqds.(feature_var) - -trial.seqds.(strcat('ftag2_', feature_var(5:end)))) <= SWEEP_ANGLE_MIN_DEG);
+  parallel_edged_quad_ds_idx = (abs(trial.ds.(feature_var)) > 2*SWEEP_ANGLE_MIN_DEG) & ...
+  (abs(trial.ds.(feature_var) - -trial.ds.(strcat('ftag2_', feature_var(5:end)))) <= SWEEP_ANGLE_MIN_DEG);
+  trials.(trial_id).seqds_exclude_idx = ...
+    trials.(trial_id).seqds_exclude_idx | parallel_edged_quad_seqds_idx;
+  trials.(trial_id).ds_exclude_idx = ...
+    trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
+end
+
+% Filter random trial to remove multi-3D-pose ambiguities
+trial = trials.random;
+if APPLY_FILTER,
+  parallel_edged_quad_seqds_idx = (trial.seqds.diff_rxy_deg >= RANDOM_RXY_MAX_DEG);
+  parallel_edged_quad_ds_idx = (trial.ds.diff_rxy_deg >= RANDOM_RXY_MAX_DEG);
+  trials.(trial_id).seqds_exclude_idx = ...
+    trials.(trial_id).seqds_exclude_idx | parallel_edged_quad_seqds_idx;
+  trials.(trial_id).ds_exclude_idx = ...
+    trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
+end
+
+% Filter all trials to remove quads near image border
+if APPLY_FILTER,
+  for trial_i = 1:length(trial_ids),
+    trial_id = trial_ids{trial_i};
+    trial = trials.(trial_id);
+    near_border_quad_seqds_idx = ...
+      (trial.seqds.quad_border_mindist_px <= QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX);
+    near_border_quad_ds_idx = ...
+      (trial.ds.quad_border_mindist_px <= QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX);
+    trials.(trial_id).seqds_exclude_idx = ...
+      trials.(trial_id).seqds_exclude_idx | near_border_quad_seqds_idx;
+    trials.(trial_id).ds_exclude_idx = ...
+      trials.(trial_id).ds_exclude_idx | near_border_quad_ds_idx;
+  end
+end
+
 %% Display mis-detection and multi-detections
-fprintf('%11s:\t%9s\t%9s\t%6s\n', 'TRIAL', '0-DET', 'N-DET', 'OBS');
+fprintf('%11s:\t%9s\t%9s\t%9s\t%6s\n', 'TRIAL', '0-DET', 'N-DET', 'FILTERED', 'OBS');
 for trial_i = 1:length(trial_ids),
   trial_id = trial_ids{trial_i};
   trial = trials.(trial_id);
   num_zero_det = sum(trial.seqds.ftag2_num_tags_detected == 0);
   num_multi_det = sum(trial.seqds.ftag2_num_tags_detected > 1);
   num_total_det = size(trial.seqds, 1);
-  num_obs = size(trial.ds, 1);
-  fprintf('%11s:\t%4d (%2.0f%%)\t%4d (%2.0f%%)\t%6d\n', trial_id, ...
+  num_filtered_det = sum((trial.seqds.ftag2_num_tags_detected == 1) & trial.seqds_exclude_idx);
+  num_obs = sum(~trial.ds_exclude_idx);
+  fprintf('%11s:\t%4d (%2.0f%%)\t%4d (%2.0f%%)\t%4d (%2.0f%%)\t%6d\n', trial_id, ...
     num_zero_det, num_zero_det/num_total_det*100, ...
     num_multi_det, num_multi_det/num_total_det*100, ...
+    num_filtered_det, num_filtered_det/num_total_det*100, ...
     num_obs);
 end
 fprintf('\n');
@@ -165,10 +246,8 @@ rds = mat2dataset(random_zero_det_poses, 'VarNames', { ...
 
 %% Visualize 0-detections in random set as fn of tag pose
 
-pose_vars = {'tag_tx_m', 'tag_ty_m', 'tag_tz_m', ...
-  'tag_rx_deg', 'tag_ry_deg', 'tag_rz_deg'};
 num_hist_bins = 40;
-for pose_var_cell = pose_vars,
+for pose_var_cell = rds.Properties.VarNames(2:end),
   pose_var = pose_var_cell{1};
   
   figure(fig_i); fig_i = fig_i+1; clf;
@@ -180,25 +259,25 @@ end
 %%
 % *RESULTS:*
 %
-% * tx & ty: mostly uniform; 0-det increases slightly when tag is moved
-%       away from center of image
-% * tz: high 0-det count at near range, hypothesized due to tag (partially)
-%       out of view frustum; increased 0-det count for large tz, likely
-%       due to small tag size in image
+% * tx & ty: few 0-det; increases slightly when tag is moved away
+%       from center of image
+% * tz: concentration of 0-dets at near range, presumably due to tag
+%       partially out of view frustum
 % * rx & ry (tag pitch / yaw, a.k.a. out-of-plane rotations):
 %       mostly uniform; 0-det increases slightly when tag is rotated
-%       away from planar pose
-% * rz (tag roll, a.k.a. in-plane rotation): uniform 0-det distribution
+%       away from planar pose (at OOP angles > 55')
+% * rz (tag roll, a.k.a. in-plane rotation): mostly uniform 0-det dist
 
 %% Plot tag pose accuracies for sweep sets
 
+num_hist_bins = 20;
 for trial_i = 1:(length(trial_ids)-1), % skip random
   trial_id = trial_ids{trial_i};
   feature_var = sweep_feature_vars{trial_i};
   
   % Isolate one obs per tag detection
   tds = trials.(trial_id).ds;
-  selected_idx = (tds.tag_freq == 1) & (tds.tag_slice == 1);
+  selected_idx = (tds.tag_freq == 1) & (tds.tag_slice == 1) & ~(trials.(trial_id).ds_exclude_idx);
   ftds = tds(selected_idx, :);
 
   diff_pose_var = sprintf('diff_%s', feature_var(5:end));
@@ -256,32 +335,18 @@ end
 %       high-rate sawtooth pattern hypothesized due to pixel-level jitter
 % * rz (tag roll, a.k.a. in-plane rotation): small, zero-mean errors;
 %      no visual dependence on sweep var
-%
-% *OUTLIERS:*
-%
-% * diff_rx_deg near -70': when tag is pitched sufficiently away (~75'),
-%      mag+phase signature is mistakenly detected in rotated tag image;
-%      simple fix is to threshold these border cases; cleaner fix might
-%      require comparing magnitude spectrums for rotated and non-rotated
-%      tag and determining better filtering / selection criteria
-%      (maybe including phase error as well);
-%      *payload phases are affected by this error!*
-% * diff_ry_deg near -150': see (diff_rx_deg near -70')
-% * diff_rx_deg near 27': when tag is pitched at very small angle (~15'),
-%      weirdly FTag2 recognizes it with a different pitch (~-14'); although
-%      payload phases are not affected
 
 %% Plot tag pose accuracies for random set
 
 % Isolate one obs per tag detection
 tds = trials.random.ds;
-selected_idx = (tds.tag_freq == 1) & (tds.tag_slice == 1);
+selected_idx = (tds.tag_freq == 1) & (tds.tag_slice == 1) & ~(trials.random.ds_exclude_idx);
 ftds = tds(selected_idx, :);
 
 % Plot error bars for each of the pose variables
 pose_vars = {'tx_m', 'ty_m', 'tz_m', ...
   'rx_deg', 'ry_deg', 'rz_deg', ...
-  'pitch_deg', 'yaw_deg', 'roll_deg'};
+  'pitch_deg', 'yaw_deg', 'roll_deg', 'txy_m', 'txyz_m', 'rxy_deg'};
 num_hist_bins = 20;
 for pose_var_cell = pose_vars,
   diff_pose_var = sprintf('diff_%s', pose_var_cell{1});
@@ -318,7 +383,7 @@ end
 %   normal-distributed small errors; but *unexpectedly high outlier count*:
 %   suspect due to solvePnP-related error
 % * rz (tag roll, a.k.a. in-plane rotation):
-%       normal-distributed small errors; but *few outliers near +/-180'*
+%       normal-distributed small errors
 
 %% Plot phase payload errors vs sweep trials
 
@@ -336,7 +401,8 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
       f_diffs = f_vals(2:end)-f_vals(1:end-1);
       f_dsweep = unique(f_diffs);
       second_tag_start_id_seq = tds.id_seq(find(f_diffs == min(f_dsweep), 1, 'first')+1);
-      selected_idx = (tds.id_seq < second_tag_start_id_seq) & (tds.tag_slice == 1) & (tds.tag_freq == 1);
+      selected_idx = (tds.id_seq < second_tag_start_id_seq) & ...
+        (tds.tag_slice == 1) & (tds.tag_freq == 1) & ~(trials.(trial_id).ds_exclude_idx);
       title_str = 'Single tag, slice=1, freq=1';
     else
       selected_idx = (tds.tag_freq == filter_freq);
