@@ -63,6 +63,7 @@ APPLY_FILTER = true;
 SWEEP_ANGLE_MIN_DEG = 2;
 RANDOM_RXY_MAX_DEG = 9;
 QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX = 2;
+PAYLOAD_STR_MAX_DIFF = 7;
 
 % Initialize exclude_idx vectors
 for trial_i = 1:length(trial_ids),
@@ -96,6 +97,7 @@ for trial_i = 1:(length(trial_ids) - 1), % skip random
 end
 
 % Filter random trial to remove multi-3D-pose ambiguities
+trial_id = 'random';
 trial = trials.random;
 if APPLY_FILTER,
   parallel_edged_quad_seqds_idx = (trial.seqds.diff_rxy_deg >= RANDOM_RXY_MAX_DEG);
@@ -106,19 +108,24 @@ if APPLY_FILTER,
     trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
 end
 
-% Filter all trials to remove quads near image border
+% Filter all trials to remove quads near image border, and payloads
+% that greatly differ from expected
 if APPLY_FILTER,
   for trial_i = 1:length(trial_ids),
     trial_id = trial_ids{trial_i};
     trial = trials.(trial_id);
     near_border_quad_seqds_idx = ...
       (trial.seqds.quad_border_mindist_px <= QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX);
+    poor_payload_seqds_idx = ...
+      (trial.seqds.diff_payload_str_n >= PAYLOAD_STR_MAX_DIFF);
     near_border_quad_ds_idx = ...
       (trial.ds.quad_border_mindist_px <= QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX);
+    poor_payload_ds_idx = ...
+      (trial.ds.diff_payload_str_n >= PAYLOAD_STR_MAX_DIFF);
     trials.(trial_id).seqds_exclude_idx = ...
-      trials.(trial_id).seqds_exclude_idx | near_border_quad_seqds_idx;
+      trials.(trial_id).seqds_exclude_idx | near_border_quad_seqds_idx | poor_payload_seqds_idx;
     trials.(trial_id).ds_exclude_idx = ...
-      trials.(trial_id).ds_exclude_idx | near_border_quad_ds_idx;
+      trials.(trial_id).ds_exclude_idx | near_border_quad_ds_idx | poor_payload_ds_idx;
   end
 end
 
@@ -294,16 +301,16 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
   xlabel(diff_pose_var, 'interpreter', 'none');
   ylabel('Boxplot (full)');
   
-  q1q3 = quantile(diff_vals, [0.25, 0.75]);
-  w = 1.75;
-  figure(fig_i); fig_i = fig_i+1; clf;
-  boxplot(diff_vals, 'orientation', 'horizontal', 'extrememode', 'compress');
-  xlabel(diff_pose_var, 'interpreter', 'none');
-  ylabel('Boxplot (CROPPED)');
-  ax = axis;
-  ax(1) = q1q3(1) - w*(q1q3(2)-q1q3(1));
-  ax(2) = q1q3(2) + w*(q1q3(2)-q1q3(1));
-  axis(ax);
+%   q1q3 = quantile(diff_vals, [0.25, 0.75]);
+%   w = 1.75;
+%   figure(fig_i); fig_i = fig_i+1; clf;
+%   boxplot(diff_vals, 'orientation', 'horizontal', 'extrememode', 'compress');
+%   xlabel(diff_pose_var, 'interpreter', 'none');
+%   ylabel('Boxplot (CROPPED)');
+%   ax = axis;
+%   ax(1) = q1q3(1) - w*(q1q3(2)-q1q3(1));
+%   ax(2) = q1q3(2) + w*(q1q3(2)-q1q3(1));
+%   axis(ax);
   
   % Find obs index corresponding to first large negative change
   % (i.e. switch to second tag)
@@ -363,16 +370,16 @@ for pose_var_cell = pose_vars,
   xlabel(diff_pose_var, 'interpreter', 'none');
   ylabel('Boxplot (full)');
   
-  q1q3 = quantile(diff_vals, [0.25, 0.75]);
-  w = 1.75;
-  figure(fig_i); fig_i = fig_i+1; clf;
-  boxplot(diff_vals, 'orientation', 'horizontal', 'extrememode', 'compress');
-  xlabel(diff_pose_var, 'interpreter', 'none');
-  ylabel('Boxplot (CROPPED)');
-  ax = axis;
-  ax(1) = q1q3(1) - w*(q1q3(2)-q1q3(1));
-  ax(2) = q1q3(2) + w*(q1q3(2)-q1q3(1));
-  axis(ax);
+%   q1q3 = quantile(diff_vals, [0.25, 0.75]);
+%   w = 1.75;
+%   figure(fig_i); fig_i = fig_i+1; clf;
+%   boxplot(diff_vals, 'orientation', 'horizontal', 'extrememode', 'compress');
+%   xlabel(diff_pose_var, 'interpreter', 'none');
+%   ylabel('Boxplot (CROPPED)');
+%   ax = axis;
+%   ax(1) = q1q3(1) - w*(q1q3(2)-q1q3(1));
+%   ax(2) = q1q3(2) + w*(q1q3(2)-q1q3(1));
+%   axis(ax);
 end
 
 %%
@@ -405,7 +412,7 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
         (tds.tag_slice == 1) & (tds.tag_freq == 1) & ~(trials.(trial_id).ds_exclude_idx);
       title_str = 'Single tag, slice=1, freq=1';
     else
-      selected_idx = (tds.tag_freq == filter_freq);
+      selected_idx = (tds.tag_freq == filter_freq) & ~(trials.(trial_id).ds_exclude_idx);
       title_str = sprintf('All tags, all slices, freq=%d', filter_freq);
     end
     ftds = tds(selected_idx, :);
@@ -487,9 +494,66 @@ end
 
 %% Plot phase payload errors vs features in random set
 
-% TODO: plot sign and magn errors vs {tx, ty, tz, rx, ry, rz, pitch, yaw,
-% roll, rot90}, while filtering by freq=1 and freq=2 (across all tags and
-% all slices)
+trial_i = length(trial_ids); % only random
+trial_id = trial_ids{trial_i};
+tds = trials.(trial_id).ds;
+for filter_freq = 1:trials.(trial_id).tag_num_freqs,
+  % Filter observations
+  selected_idx = (tds.tag_freq == filter_freq) & ~(trials.(trial_id).ds_exclude_idx);
+  title_str = sprintf('All tags, all slices, freq=%d', filter_freq);
+  
+  ftds = tds(selected_idx, :);
+
+  for feature_var_ = { ...
+      'ftag2_tx_m', 'ftag2_ty_m', 'ftag2_tz_m', ...
+      'ftag2_rx_deg', 'ftag2_ry_deg', 'ftag2_rz_deg', ...
+      'ftag2_pitch_deg', 'ftag2_yaw_deg', 'ftag2_roll_deg', ...
+      'ftag2_oop_deg', 'ftag2_tag_img_rot', 'ftag2_phase_deg', ...
+      },
+    feature_var = feature_var_{1};
+
+    % Plot signed phase error vs sweep var
+    figure(fig_i); fig_i = fig_i+1; clf;
+    plot(ftds.(feature_var), ftds.diff_phase_deg, ...
+      '.b', 'LineWidth', 1, 'MarkerSize', 6);
+    rho = corr(ftds.(feature_var), ftds.diff_phase_deg);
+    xlabel(sprintf('%s [rho: %.4f]', feature_var, rho), ...
+      'interpreter', 'none');
+    ylabel(sprintf('Signed phase error (deg) [%d obs]', size(ftds, 1)));
+    title(title_str);
+
+  %   % Plot abs phase error vs sweep var
+  %   figure(fig_i); fig_i = fig_i+1; clf;
+  %   plot(ftds.(feature_var), abs(ftds.diff_phase_deg), ...
+  %     '.b', 'LineWidth', 1, 'MarkerSize', 6);
+  %   rho = corr(ftds.(feature_var), abs(ftds.diff_phase_deg));
+  %   xlabel(sprintf('%s [rho: %.4f]', feature_var, rho), ...
+  %     'interpreter', 'none');
+  %   ylabel(sprintf('Abs phase error (deg) [%d obs]', size(ftds, 1)));
+  %   title(title_str);
+  end
+end
+
+% TODO: analyses
+
+%% Show relationship between tag roll and rot90 value
+%
+% Observe that rot90 value is highly correlated to roll, but not perfectly;
+% i.e. for some values of roll, there have been multiple rot90 values
+
+for trial_id = {'sweep_roll', 'random'},
+  tds = trials.(trial_id{1}).seqds;
+  selected_idx = ~trials.(trial_id{1}).seqds_exclude_idx;
+  ftds = tds(selected_idx, :);
+
+  figure(fig_i); fig_i = fig_i+1; clf;
+  plot(ftds.tag_roll_deg, ftds.ftag2_tag_img_rot*90, ...
+        '.b', 'LineWidth', 1, 'MarkerSize', 6);
+  xlabel('tag roll (deg)');
+  ylabel('tag image rot90 (deg)');
+  title(sprintf('tag roll vs quad rot90 for %s set', trial_id{1}), ...
+    'interpreter', 'none');
+end
 
 %% Compute naive gen. backwards stepwise linear regression on phase bias
 
