@@ -318,7 +318,8 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
   f_diffs = f_vals(2:end)-f_vals(1:end-1);
   f_dsweep = unique(f_diffs);
   second_tag_start_id_seq = tds.id_seq(find(f_diffs == min(f_dsweep), 1, 'first')+1);
-  selected_idx_single = (tds.id_seq < second_tag_start_id_seq) & (tds.tag_slice == 1) & (tds.tag_freq == 1);
+  selected_idx_single = (tds.id_seq < second_tag_start_id_seq) & ...
+    (tds.tag_freq == 1) & (tds.tag_slice == 1) & ~(trials.(trial_id).ds_exclude_idx);
   ftds_single = tds(selected_idx_single, :);
 
   figure(fig_i); fig_i = fig_i+1; clf;
