@@ -118,89 +118,232 @@ for trial_i = 1:length(trial_ids),
 end
 fprintf('\n');
 
-%% Choose and augment dataset for bias regression
+%% Choose dataset for bias regression
 trial_id = 'random';
 tds = trials.(trial_id).ds;
 tds_exclude_idx = trials.(trial_id).ds_exclude_idx;
-tds.quad_diag13_px_sqrd = ((tds.quad_corner1x_px-tds.quad_corner3x_px).^2+(tds.quad_corner1y_px-tds.quad_corner3y_px).^2);
-tds.quad_diag24_px_sqrd = ((tds.quad_corner2x_px-tds.quad_corner4x_px).^2+(tds.quad_corner2y_px-tds.quad_corner4y_px).^2);
-tds.quad_diag_sqrd_ratio = tds.quad_diag13_px_sqrd ./ tds.quad_diag24_px_sqrd;
-tds.tag_txy_norm = sqrt(tds.tag_tx_m.^2+tds.tag_ty_m.^2)./tds.tag_width_m;
-tds.tag_tz_norm = tds.tag_tz_m./tds.tag_width_m;
-tds.tag_pitch_height_scale = cosd(tds.tag_pitch_deg);
-tds.tag_yaw_width_scale = cosd(tds.tag_yaw_deg);
-tds.tag_roll_range_id = mod(floor((tds.tag_roll_deg - 45)/90), 4);
-tds.ftag2_txy_norm = sqrt(tds.ftag2_tx_m.^2+tds.ftag2_ty_m.^2)./tds.tag_width_m;
-tds.ftag2_tz_norm = tds.ftag2_tz_m./tds.tag_width_m;
-tds.ftag2_pitch_height_scale = cosd(tds.ftag2_pitch_deg);
-tds.ftag2_yaw_width_scale = cosd(tds.ftag2_yaw_deg);
-tds.ftag2_roll_range_id = mod(floor((tds.ftag2_roll_deg - 45)/90), 4);
 
-%% Compute linear regression on phase bias
+biasModelSimple = strcat('diff_phase_deg ~ ', ...
+  ' 1', ...
+  ' + ftag2_tag_img_rot*tag_freq', ...
+  '');
 
-fitBiasDavid = fitlm(tds, strcat('diff_phase_deg ~ ', ...
-    ' 1', ...
-    ' + ftag2_tag_img_rot*tag_freq', ...
-    ' + ftag2_tag_img_rot*ftag2_width_px', ...
-    ' + ftag2_tag_img_rot*quad_diag13_px_sqrd', ...
-    ' + ftag2_tag_img_rot*quad_diag_sqrd_ratio', ...
-    ' + ftag2_tag_img_rot*ftag2_width_px*quad_diag13_px_sqrd', ...
-    ' + ftag2_tag_img_rot*ftag2_width_px*quad_diag_sqrd_ratio', ...
-    ' + ftag2_tag_img_rot*quad_diag13_px_sqrd*quad_diag_sqrd_ratio', ...
-    ''), ...
-    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx)
+biasModelQuad = strcat('diff_phase_deg ~ ', ...
+  ' 1', ...
+  ' + ftag2_tag_img_rot*tag_freq', ...
+  ' + ftag2_tag_img_rot*ftag2_width_px', ...
+  ' + ftag2_tag_img_rot*quad_diag13_px2', ...
+  ' + ftag2_tag_img_rot*quad_diag_sqrd_ratio', ...
+  ' + ftag2_tag_img_rot*ftag2_width_px*quad_diag13_px2', ...
+  ' + ftag2_tag_img_rot*ftag2_width_px*quad_diag_sqrd_ratio', ...
+  ' + ftag2_tag_img_rot*quad_diag13_px2*quad_diag_sqrd_ratio', ...
+  '');
 
-fitBiasAnqi = fitlm(tds, strcat('diff_phase_deg ~ ', ...
-    ' 1', ...
-    ' + ftag2_tag_img_rot*tag_freq', ...
-    ' + ftag2_tag_img_rot*ftag2_txy_norm', ...
-    ' + ftag2_tag_img_rot*ftag2_tz_norm', ...
-    ' + ftag2_tag_img_rot*ftag2_pitch_height_scale', ...
-    ' + ftag2_tag_img_rot*ftag2_yaw_width_scale', ...
-    ''), ...
-    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx)
+biasModelPose = strcat('diff_phase_deg ~ ', ...
+  ' 1', ...
+  ' + ftag2_tag_img_rot*tag_freq', ...
+  ' + ftag2_tag_img_rot*ftag2_txy_norm', ...
+  ' + ftag2_tag_img_rot*ftag2_tz_norm', ...
+  ' + ftag2_tag_img_rot*ftag2_pitch_height_scale', ...
+  ' + ftag2_tag_img_rot*ftag2_yaw_width_scale', ...
+  '');
 
-fitBiasSimple = fitlm(tds, strcat('diff_phase_deg ~ ', ...
-    ' 1', ...
-    ' + ftag2_tag_img_rot*tag_freq', ...
-    ''), ...
-    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx)
-  
-%% Remove bias from all datasets
+%% Inspect informally performance of linear regressions on phase bias
 
-fitBias = fitBiasDavid;
-%fitBias = fitBiasSimple;
-%fitBias = fitBiasAnqi;
-%fitBias = [];
+biasFitSimpleAll = fitlm(tds, biasModelSimple, ...
+  'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx);
+disp(biasFitSimpleAll);
+disp(biasFitSimpleAll.anova);
 
-for trial_i = 1:length(trial_ids),
-  trial_id = trial_ids{trial_i};
-  tds = trials.(trial_id).ds;
-  
-  tds.quad_diag13_px_sqrd = ((tds.quad_corner1x_px-tds.quad_corner3x_px).^2+(tds.quad_corner1y_px-tds.quad_corner3y_px).^2);
-  tds.quad_diag24_px_sqrd = ((tds.quad_corner2x_px-tds.quad_corner4x_px).^2+(tds.quad_corner2y_px-tds.quad_corner4y_px).^2);
-  tds.quad_diag_sqrd_ratio = tds.quad_diag13_px_sqrd ./ tds.quad_diag24_px_sqrd;
-  tds.tag_txy_norm = sqrt(tds.tag_tx_m.^2+tds.tag_ty_m.^2)./tds.tag_width_m;
-  tds.tag_tz_norm = tds.tag_tz_m./tds.tag_width_m;
-  tds.tag_pitch_height_scale = cosd(tds.tag_pitch_deg);
-  tds.tag_yaw_width_scale = cosd(tds.tag_yaw_deg);
-  tds.tag_roll_range_id = mod(floor((tds.tag_roll_deg - 45)/90), 4);
-  tds.ftag2_txy_norm = sqrt(tds.ftag2_tx_m.^2+tds.ftag2_ty_m.^2)./tds.tag_width_m;
-  tds.ftag2_tz_norm = tds.ftag2_tz_m./tds.tag_width_m;
-  tds.ftag2_pitch_height_scale = cosd(tds.ftag2_pitch_deg);
-  tds.ftag2_yaw_width_scale = cosd(tds.ftag2_yaw_deg);
-  tds.ftag2_roll_range_id = mod(floor((tds.ftag2_roll_deg - 45)/90), 4);
-  
-  if isempty(fitBias),
-    pred_diff_phase_deg = zeros(size(tds, 1), 1);
-  else
-    pred_diff_phase_deg = fitBias.predict(tds);
+biasFitQuadAll = fitlm(tds, biasModelQuad, ...
+  'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx);
+disp(biasFitQuadAll);
+disp(biasFitQuadAll.anova);
+
+biasFitPoseAll = fitlm(tds, biasModelPose, ...
+  'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx);
+disp(biasFitPoseAll);
+disp(biasFitPoseAll.anova);
+
+%% Perform N-fold cross-validation and report test-set results
+
+TEST_SET_RATIO = 0.2;
+N_FOLD_XVAL = 4;
+biasModelXval = biasModelPose;
+
+total_num_obs = size(tds, 1);
+set_type_ids = zeros(total_num_obs, 1); % 0 = test set, 1-N_FOLD_XVAL: xval subsets
+xval_subset_size = floor(total_num_obs*(1-TEST_SET_RATIO)/N_FOLD_XVAL);
+xval_set_ids = repmat(1:N_FOLD_XVAL, xval_subset_size, 1);
+set_type_ids(1:numel(xval_set_ids)) = xval_set_ids(:);
+
+biasFitXval = cell(N_FOLD_XVAL, 1);
+best_fit_idx = 0;
+best_fit_RMSE = inf;
+worst_fit_idx = 0;
+worst_fit_RMSE = 0;
+for xval_id = 1:N_FOLD_XVAL,
+  biasFitXval{xval_id} = fitlm(tds, biasModelXval, ...
+    'CategoricalVars', {'ftag2_tag_img_rot'}, ...
+    'Exclude', tds_exclude_idx | (set_type_ids ~= xval_id));
+  if biasFitXval{xval_id}.RMSE < best_fit_RMSE,
+    best_fit_RMSE = biasFitXval{xval_id}.RMSE;
+    best_fit_idx = xval_id;
   end
+  if biasFitXval{xval_id}.RMSE > worst_fit_RMSE,
+    worst_fit_RMSE = biasFitXval{xval_id}.RMSE;
+    worst_fit_idx = xval_id;
+  end
+end
+biasFit = biasFitXval{best_fit_idx};
+
+testds = tds(~(tds_exclude_idx | (set_type_ids ~= 0)), :);
+pred_diff_phase_deg = biasFit.predict(testds);
+test_fit_RMSE = sqrt(mean((pred_diff_phase_deg - testds.diff_phase_deg).^2));
+
+fprintf('===== %d-FOLD XVAL RESULTS =====\n%s\n- best xval RMSE: %.4f (id=%d)\n- worst xval RMSE: %.4f (id=%d)\n- test RMSE: %.4f\n', ...
+  N_FOLD_XVAL, biasModelXval, best_fit_RMSE, best_fit_idx, worst_fit_RMSE, worst_fit_idx, test_fit_RMSE);
+
+%% Remove bias from all datasets, and generate variance random-group set
+
+apply_bias_model = false; % if false then load existing bias model
+trials_wo_bias_file = fullfile(dataset_dir, 'trials', '6s2f22b_all_trials.bias_removed.mat');
+
+if apply_bias_model,
+  for trial_i = 1:length(trial_ids),
+    trial_id = trial_ids{trial_i};
+    tds = trials.(trial_id).ds;
+
+    fprintf('- Removing bias from %s\n', trial_id);
+    if isempty(biasFit),
+      pred_diff_phase_deg = zeros(size(tds, 1), 1);
+    else
+      pred_diff_phase_deg = biasFit.predict(tds);
+    end
+
+    tds.diff_phase_wo_bias_deg = angularDiff(tds.tag_phase_deg, tds.ftag2_phase_deg - pred_diff_phase_deg);
+
+    trials.(trial_id).ds = tds;
+  end
+
+  % for each freq and each pose in random set
+  %
+  % IMPORTANT: stdev of phase errors is INDEPENDENT from bias of phase
+  %            errors, so it DOES NOT MATTER which bias correction model used
+
+  trial_id = 'random';
+  NUM_TAGS_PER_RANDOM_POSE = 10;
+  NUM_FREQS = trials.(trial_id).tag_num_freqs;
+  tds = trials.(trial_id).ds;
+  tds_exclude_idx = trials.(trial_id).ds_exclude_idx;
+  group_seqids = unique(floor((tds.id_seq(~tds_exclude_idx)-1)/NUM_TAGS_PER_RANDOM_POSE));
+  gds_all_target_idx = cell(length(group_seqids)*NUM_FREQS, 1);
+  gds_first_target_idx = zeros(length(group_seqids)*NUM_FREQS, 1);
+  gds_i = 0;
+  fprintf('- Computing group dataset\n');
+
+  for group_seqid = group_seqids',
+    for freq = 1:NUM_FREQS,
+      target_idx = find((floor((tds.id_seq-1)/NUM_TAGS_PER_RANDOM_POSE) == group_seqid) & ...
+        (tds.tag_freq == freq) & ~tds_exclude_idx);
+      gds_i = gds_i + 1;
+      gds_all_target_idx{gds_i} = target_idx;
+      gds_first_target_idx(gds_i) = target_idx(1);
+    end
+  end
+
+  gds = tds(gds_first_target_idx, :);
+  gds.id_seq = [];
+  gds.id_frame = [];
+  gds.tag_slice = [];
+  gds.ftag2_num_tags_detected = [];
+  gds.diff_payload_str_n = [];
+  gds.tag_slice_wide_phase_id = [];
+  gds.ftag2_mag = [];
+  gds.tag_phase_deg = [];
+  gds.ftag2_phase_deg = [];
+  gds.diff_phase_deg = [];
+  gds.diff_phase_wo_bias_deg = [];
+  gds.diff_tx_m = [];
+  gds.diff_ty_m = [];
+  gds.diff_tz_m = [];
+  gds.diff_txy_m = [];
+  gds.diff_txyz_m = [];
+  gds_diff_rx_deg = [];
+  gds.diff_ry_deg = [];
+  gds.diff_rz_deg = [];
+  gds.diff_pitch_deg = [];
+  gds.diff_yaw_deg = [];
+  gds.diff_oop_deg = [];
+  gds.diff_rxy_deg = [];
+  gds.quad_border_mindist_px = [];
+  gds.quad_area_px2 = [];
+  gds.tag_roll_range_id = [];
+  gds.ftag2_roll_range_id = [];
+
+  gds.mean_diff_phase_wo_bias_deg = nan(size(gds, 1), 1);
+  gds.stdev_diff_phase_wo_bias_deg = nan(size(gds, 1), 1);
+  num_groups = size(gds, 1);
+  for gds_i = 1:num_groups,
+    if mod(gds_i, 100) == 0,
+      fprintf('-- Processing group %4d/%4d\n', gds_i, num_groups);
+    end
+      
+    target_idx = gds_all_target_idx{gds_i};
+    if (length(target_idx) >= 3),
+      gds.mean_diff_phase_wo_bias_deg(gds_i) = mean(tds.diff_phase_wo_bias_deg(target_idx));
+      gds.stdev_diff_phase_wo_bias_deg(gds_i) = std(tds.diff_phase_wo_bias_deg(target_idx));
+      gds.ftag2_tx_m(gds_i) = mean(tds.ftag2_tx_m(target_idx));
+      gds.ftag2_ty_m(gds_i) = mean(tds.ftag2_ty_m(target_idx));
+      gds.ftag2_tz_m(gds_i) = mean(tds.ftag2_tz_m(target_idx));
+      gds.ftag2_rx_deg(gds_i) = angularMean(tds.ftag2_tx_m(target_idx));
+      gds.ftag2_ry_deg(gds_i) = angularMean(tds.ftag2_tx_m(target_idx));
+      gds.ftag2_rz_deg(gds_i) = angularMean(tds.ftag2_tx_m(target_idx));
+      gds.ftag2_width_px(gds_i) = mean(tds.ftag2_width_px(target_idx));
+      gds.quad_corner1x_px(gds_i) = mean(tds.quad_corner1x_px(target_idx));
+      gds.quad_corner1y_px(gds_i) = mean(tds.quad_corner1y_px(target_idx));
+      gds.quad_corner2x_px(gds_i) = mean(tds.quad_corner2x_px(target_idx));
+      gds.quad_corner2y_px(gds_i) = mean(tds.quad_corner2y_px(target_idx));
+      gds.quad_corner3x_px(gds_i) = mean(tds.quad_corner3x_px(target_idx));
+      gds.quad_corner3y_px(gds_i) = mean(tds.quad_corner3y_px(target_idx));
+      gds.quad_corner4x_px(gds_i) = mean(tds.quad_corner4x_px(target_idx));
+      gds.quad_corner4y_px(gds_i) = mean(tds.quad_corner4y_px(target_idx));
+      if length(unique(tds.ftag2_tag_img_rot(target_idx))) > 1,
+        gds.ftag2_tag_img_rot(gds_i) = nan;
+      end
+    end
+  end
+
+  rad = pi/180;
+
+  [pitch_rad, yaw_rad, roll_rad] = tf_euler_inverse(gds.ftag2_rx_deg*rad, gds.ftag2_ry_deg*rad, gds.ftag2_rz_deg*rad);
+  gds.ftag2_pitch_deg = pitch_rad/rad;
+  gds.ftag2_yaw_deg = yaw_rad/rad;
+  gds.ftag2_roll_deg = roll_rad/rad;
+  gds.ftag2_oop_deg = tf_angle_between_euler_poses(gds.ftag2_pitch_deg, gds.ftag2_yaw_deg, gds.ftag2_roll_deg, ...
+    zeros(size(gds.ftag2_pitch_deg)), zeros(size(gds.ftag2_pitch_deg)), zeros(size(gds.ftag2_pitch_deg)));
+  gds.ftag2_txy_norm = sqrt(gds.ftag2_tx_m.^2+gds.ftag2_ty_m.^2)./gds.tag_width_m;
+  gds.ftag2_tz_norm = gds.ftag2_tz_m./gds.tag_width_m;
+  gds.ftag2_pitch_height_scale = cosd(gds.ftag2_pitch_deg);
+  gds.ftag2_yaw_width_scale = cosd(gds.ftag2_yaw_deg);
+  gds.quad_diag13_px_sqrd = (gds.quad_corner1x_px-gds.quad_corner3x_px).^2+(gds.quad_corner1y_px-gds.quad_corner3y_px).^2;
+  gds.quad_diag24_px_sqrd = (gds.quad_corner2x_px-gds.quad_corner4x_px).^2+(gds.quad_corner2y_px-gds.quad_corner4y_px).^2;
+  gds.quad_diag_sqrd_ratio = gds.quad_diag13_px_sqrd ./ gds.quad_diag24_px_sqrd;
+
+  gds_exclude_idx = isnan(gds.mean_diff_phase_wo_bias_deg);
+
+  trials.random.gds = gds;
+  trials.random.gds_exclude_idx = gds_exclude_idx;
+  trials.bias_model = biasModelXval;
+  trials.bias_fit = biasFit;
   
-  tds.diff_phase_wo_bias_deg = angularDiff(tds.tag_phase_deg, tds.ftag2_phase_deg - pred_diff_phase_deg);
-  
-  trials.(trial_id).ds = tds;
-end 
+  save(trials_wo_bias_file, 'trials');
+  fprintf('- Finished computing and saving bias-removed datasets\n');
+else
+  load(trials_wo_bias_file, 'trials'); %#ok<*UNRCH>
+  gds = trials.random.gds;
+  gds_exclude_idx = trials.random.gds_exclude_idx;
+end
 
 %% Plot bias-corrected phase payload errors vs sweep trials
 
@@ -293,107 +436,6 @@ for filter_freq = 1:trials.(trial_id).tag_num_freqs,
   end
 end
 
-%% Compute variances of bias-correct phase errors across slices&tags
-% for each freq and each pose in random set
-%
-% IMPORTANT: stdev of phase errors is INDEPENDENT from bias of phase
-%            errors, so it DOES NOT MATTER which bias correction model used
-
-trial_id = 'random';
-NUM_TAGS_PER_RANDOM_POSE = 10;
-NUM_FREQS = trials.(trial_id).tag_num_freqs;
-tds = trials.(trial_id).ds;
-tds_exclude_idx = trials.(trial_id).ds_exclude_idx;
-group_seqids = unique(floor((tds.id_seq(~tds_exclude_idx)-1)/NUM_TAGS_PER_RANDOM_POSE));
-gds_all_target_idx = cell(length(group_seqids)*NUM_FREQS, 1);
-gds_first_target_idx = zeros(length(group_seqids)*NUM_FREQS, 1);
-gds_i = 0;
-
-for group_seqid = group_seqids',
-  for freq = 1:NUM_FREQS,
-    target_idx = find((floor((tds.id_seq-1)/NUM_TAGS_PER_RANDOM_POSE) == group_seqid) & ...
-      (tds.tag_freq == freq) & ~tds_exclude_idx);
-    gds_i = gds_i + 1;
-    gds_all_target_idx{gds_i} = target_idx;
-    gds_first_target_idx(gds_i) = target_idx(1);
-  end
-end
-
-gds = tds(gds_first_target_idx, :);
-gds.id_seq = [];
-gds.id_frame = [];
-gds.tag_slice = [];
-gds.ftag2_num_tags_detected = [];
-gds.diff_payload_str_n = [];
-gds.tag_slice_wide_phase_id = [];
-gds.ftag2_mag = [];
-gds.tag_phase_deg = [];
-gds.ftag2_phase_deg = [];
-gds.diff_phase_deg = [];
-gds.diff_phase_wo_bias_deg = [];
-gds.diff_tx_m = [];
-gds.diff_ty_m = [];
-gds.diff_tz_m = [];
-gds.diff_txy_m = [];
-gds.diff_txyz_m = [];
-gds_diff_rx_deg = [];
-gds.diff_ry_deg = [];
-gds.diff_rz_deg = [];
-gds.diff_pitch_deg = [];
-gds.diff_yaw_deg = [];
-gds.diff_oop_deg = [];
-gds.diff_rxy_deg = [];
-gds.quad_border_mindist_px = [];
-gds.quad_area_px2 = [];
-gds.tag_roll_range_id = [];
-gds.ftag2_roll_range_id = [];
-
-gds.mean_diff_phase_wo_bias_deg = nan(size(gds, 1), 1);
-gds.stdev_diff_phase_wo_bias_deg = nan(size(gds, 1), 1);
-for gds_i = 1:size(gds, 1),
-  target_idx = gds_all_target_idx{gds_i};
-  if (length(target_idx) >= 3),
-    gds.mean_diff_phase_wo_bias_deg(gds_i) = mean(tds.diff_phase_wo_bias_deg(target_idx));
-    gds.stdev_diff_phase_wo_bias_deg(gds_i) = std(tds.diff_phase_wo_bias_deg(target_idx));
-    gds.ftag2_tx_m(gds_i) = mean(tds.ftag2_tx_m(target_idx));
-    gds.ftag2_ty_m(gds_i) = mean(tds.ftag2_ty_m(target_idx));
-    gds.ftag2_tz_m(gds_i) = mean(tds.ftag2_tz_m(target_idx));
-    gds.ftag2_rx_deg(gds_i) = angularMean(tds.ftag2_tx_m(target_idx));
-    gds.ftag2_ry_deg(gds_i) = angularMean(tds.ftag2_tx_m(target_idx));
-    gds.ftag2_rz_deg(gds_i) = angularMean(tds.ftag2_tx_m(target_idx));
-    gds.ftag2_width_px(gds_i) = mean(tds.ftag2_width_px(target_idx));
-    gds.quad_corner1x_px(gds_i) = mean(tds.quad_corner1x_px(target_idx));
-    gds.quad_corner1y_px(gds_i) = mean(tds.quad_corner1y_px(target_idx));
-    gds.quad_corner2x_px(gds_i) = mean(tds.quad_corner2x_px(target_idx));
-    gds.quad_corner2y_px(gds_i) = mean(tds.quad_corner2y_px(target_idx));
-    gds.quad_corner3x_px(gds_i) = mean(tds.quad_corner3x_px(target_idx));
-    gds.quad_corner3y_px(gds_i) = mean(tds.quad_corner3y_px(target_idx));
-    gds.quad_corner4x_px(gds_i) = mean(tds.quad_corner4x_px(target_idx));
-    gds.quad_corner4y_px(gds_i) = mean(tds.quad_corner4y_px(target_idx));
-    if length(unique(tds.ftag2_tag_img_rot(target_idx))) > 1,
-      gds.ftag2_tag_img_rot(gds_i) = nan;
-    end
-  end
-end
-
-rad = pi/180;
-
-[pitch_rad, yaw_rad, roll_rad] = tf_euler_inverse(gds.ftag2_rx_deg*rad, gds.ftag2_ry_deg*rad, gds.ftag2_rz_deg*rad);
-gds.ftag2_pitch_deg = pitch_rad/rad;
-gds.ftag2_yaw_deg = yaw_rad/rad;
-gds.ftag2_roll_deg = roll_rad/rad;
-gds.ftag2_oop_deg = tf_angle_between_euler_poses(gds.ftag2_pitch_deg, gds.ftag2_yaw_deg, gds.ftag2_roll_deg, ...
-  zeros(size(gds.ftag2_pitch_deg)), zeros(size(gds.ftag2_pitch_deg)), zeros(size(gds.ftag2_pitch_deg)));
-gds.ftag2_txy_norm = sqrt(gds.ftag2_tx_m.^2+gds.ftag2_ty_m.^2)./gds.tag_width_m;
-gds.ftag2_tz_norm = gds.ftag2_tz_m./gds.tag_width_m;
-gds.ftag2_pitch_height_scale = cosd(gds.ftag2_pitch_deg);
-gds.ftag2_yaw_width_scale = cosd(gds.ftag2_yaw_deg);
-gds.quad_diag13_px_sqrd = (gds.quad_corner1x_px-gds.quad_corner3x_px).^2+(gds.quad_corner1y_px-gds.quad_corner3y_px).^2;
-gds.quad_diag24_px_sqrd = (gds.quad_corner2x_px-gds.quad_corner4x_px).^2+(gds.quad_corner2y_px-gds.quad_corner4y_px).^2;
-gds.quad_diag_sqrd_ratio = gds.quad_diag13_px_sqrd ./ gds.quad_diag24_px_sqrd;
-
-gds_exclude_idx = isnan(gds.mean_diff_phase_wo_bias_deg);
-
 %% Plot variances of bias-corrected phase payload errors vs features in random set
 
 NUM_FREQS = trials.random.tag_num_freqs;
@@ -436,6 +478,14 @@ end
 
 %% Compute linear regression on phase bias
 
+fitStdevSimple = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
+    ' 1', ...
+    ' + tag_freq', ...
+    ''), ...
+    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx);
+disp(fitStdevSimple);
+disp(fitStdevSimple.anova);
+
 fitStdevDavid = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
     ' 1', ...
     ' + tag_freq', ...
@@ -446,13 +496,9 @@ fitStdevDavid = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
     ' + ftag2_width_px*quad_diag_sqrd_ratio', ...
     ' + quad_diag13_px_sqrd*quad_diag_sqrd_ratio', ...
     ''), ...
-    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx)
-
-fitStdevSimple = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
-    ' 1', ...
-    ' + tag_freq', ...
-    ''), ...
-    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx)
+    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx);
+disp(fitStdevDavid);
+disp(fitStdevDavid.anova);
 
 fitStdevAnqi = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
     ' 1', ...
@@ -462,9 +508,9 @@ fitStdevAnqi = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
     ' + ftag2_pitch_height_scale', ...
     ' + ftag2_yaw_width_scale', ...
     ''), ...
-    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx)
-
-%fitStdev = fitStdevAnqi;
+    'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx);
+disp(fitStdevAnqi);
+disp(fitStdevAnqi.anova);
 
 %% Regression test code
 %premove = 0.1;
