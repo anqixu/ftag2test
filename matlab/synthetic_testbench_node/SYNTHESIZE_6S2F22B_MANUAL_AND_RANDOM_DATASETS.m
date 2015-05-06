@@ -3,14 +3,19 @@
 clear all;
 INIT_WORKSPACE;
 
-%% Specify configuration and initialize constants
-images_dir = '../ftag2_datasets/6S2F22B_manual_set/';
+%% Specify configuration and initialize constants for manual set
+manual_set_dir = '../ftag2_datasets/6S2F22B_manual_set/';
+random_set_dir = '../ftag2_datasets/6S2F22B_random_set/';
 trials_dir = '../ftag2_datasets/trials/';
 tag_type = '6s2f22b';
-rng_seed = 1731;
+rng_seed = 1730;
 
-sweep_num_samples = 2000;
+sweep_num_samples = 1000;
 
+num_rand_poses = 1000;
+num_rand_tags_per_pose = 6;
+
+% NOTE: following are for manual sweep trials only
 tag_width_m = 0.1;
 
 tag_tx_m_dft = 0.;
@@ -46,8 +51,8 @@ end
 
 %% Enumerate all images in dataset folder
 
-tag_files = dir(fullfile(pwd, images_dir, '*.png'));
-num_tag_files = length(tag_files);
+manual_tag_files = dir(fullfile(pwd, manual_set_dir, '*.png'));
+num_manual_tag_files = length(manual_tag_files);
 
 %% Uniformly sweep through tx
 targets_template = {};
@@ -68,8 +73,8 @@ for tag_tx_m = linspace(tag_tx_m_min, tag_tx_m_max, sweep_num_samples),
 end
 
 targets_sweep_tx = {};
-for file_idx = 1:num_tag_files,
-  targets_template{1}.tag_source = fullfile(pwd, images_dir, tag_files(file_idx).name);
+for file_idx = 1:num_manual_tag_files,
+  targets_template{1}.tag_source = fullfile(pwd, manual_set_dir, manual_tag_files(file_idx).name);
   targets_sweep_tx = [targets_sweep_tx, targets_template]; %#ok<*AGROW>
 end
 
@@ -92,8 +97,8 @@ for tag_ty_m = linspace(tag_ty_m_min, tag_ty_m_max, sweep_num_samples),
 end
 
 targets_sweep_ty = {};
-for file_idx = 1:num_tag_files,
-  targets_template{1}.tag_source = fullfile(pwd, images_dir, tag_files(file_idx).name);
+for file_idx = 1:num_manual_tag_files,
+  targets_template{1}.tag_source = fullfile(pwd, manual_set_dir, manual_tag_files(file_idx).name);
   targets_sweep_ty = [targets_sweep_ty, targets_template];
 end
 
@@ -116,8 +121,8 @@ for tag_tz_m = linspace(tag_tz_m_min, tag_tz_m_max, sweep_num_samples),
 end
 
 targets_sweep_tz = {};
-for file_idx = 1:num_tag_files,
-  targets_template{1}.tag_source = fullfile(pwd, images_dir, tag_files(file_idx).name);
+for file_idx = 1:num_manual_tag_files,
+  targets_template{1}.tag_source = fullfile(pwd, manual_set_dir, manual_tag_files(file_idx).name);
   targets_sweep_tz = [targets_sweep_tz, targets_template];
 end
 
@@ -140,8 +145,8 @@ for tag_pitch_deg = linspace(tag_pitch_deg_min, tag_pitch_deg_max, sweep_num_sam
 end
 
 targets_sweep_pitch = {};
-for file_idx = 1:num_tag_files,
-  targets_template{1}.tag_source = fullfile(pwd, images_dir, tag_files(file_idx).name);
+for file_idx = 1:num_manual_tag_files,
+  targets_template{1}.tag_source = fullfile(pwd, manual_set_dir, manual_tag_files(file_idx).name);
   targets_sweep_pitch = [targets_sweep_pitch, targets_template];
 end
 
@@ -164,8 +169,8 @@ for tag_yaw_deg = linspace(tag_yaw_deg_min, tag_yaw_deg_max, sweep_num_samples),
 end
 
 targets_sweep_yaw = {};
-for file_idx = 1:num_tag_files,
-  targets_template{1}.tag_source = fullfile(pwd, images_dir, tag_files(file_idx).name);
+for file_idx = 1:num_manual_tag_files,
+  targets_template{1}.tag_source = fullfile(pwd, manual_set_dir, manual_tag_files(file_idx).name);
   targets_sweep_yaw = [targets_sweep_yaw, targets_template];
 end
 
@@ -188,12 +193,85 @@ for tag_roll_deg = linspace(tag_roll_deg_min, tag_roll_deg_max, sweep_num_sample
 end
 
 targets_sweep_roll = {};
-for file_idx = 1:num_tag_files,
-  targets_template{1}.tag_source = fullfile(pwd, images_dir, tag_files(file_idx).name);
+for file_idx = 1:num_manual_tag_files,
+  targets_template{1}.tag_source = fullfile(pwd, manual_set_dir, manual_tag_files(file_idx).name);
   targets_sweep_roll = [targets_sweep_roll, targets_template];
 end
 
-%% Aggregate trials
+%% Initialize constants for random set
+
+tag_width_m_dft = 0.1; % WARNING: do not change tag size since this complicates FTag2 decoder node
+
+%tag_tx_m_dft = 0.;
+tag_tx_m_min = -0.3;
+tag_tx_m_max = 0.3;
+
+%tag_ty_m_dft = 0.;
+tag_ty_m_min = -0.25;
+tag_ty_m_max = 0.25;
+
+%tag_tz_m_dft = 1.0;
+tag_tz_m_min = 0.5;
+tag_tz_m_max = 1.5;
+
+%tag_pitch_deg_dft = 0.;
+tag_pitch_deg_min = -45.0;
+tag_pitch_deg_max = 45.0;
+
+%tag_yaw_deg_dft = 0.;
+tag_yaw_deg_min = -45.0;
+tag_yaw_deg_max = 45.0;
+
+%tag_roll_deg_dft = 0.;
+tag_roll_deg_min = 0.;
+tag_roll_deg_max = 360.0;
+
+max_tag_oop_deg = 50;
+
+%% Enumerate all images in dataset folder
+
+random_tag_files = dir(fullfile(pwd, random_set_dir, '*.png'));
+num_random_tag_files = length(random_tag_files);
+
+%% Generate random TagPose targets
+target_seq = {};
+clear t;
+radians = pi/180;
+for pose_i = 1:num_rand_poses,
+  while true,
+    %t.tag_width_m = rand()*(tag_width_m_max-tag_width_m_min) + tag_width_m_min;
+    t.tag_width_m = tag_width_m_dft;
+    t.tag_tx_m = rand()*(tag_tx_m_max-tag_tx_m_min) + tag_tx_m_min;
+    t.tag_ty_m = rand()*(tag_ty_m_max-tag_ty_m_min) + tag_ty_m_min;
+    t.tag_tz_m = rand()*(tag_tz_m_max-tag_tz_m_min) + tag_tz_m_min;
+    t.tag_rx_deg = rand()*(tag_pitch_deg_max-tag_pitch_deg_min) + tag_pitch_deg_min;
+    t.tag_ry_deg = rand()*(tag_yaw_deg_max-tag_yaw_deg_min) + tag_yaw_deg_min;
+    t.tag_rz_deg = rand()*(tag_roll_deg_max-tag_roll_deg_min) + tag_roll_deg_min;
+    
+    % Reject pose if its out-of-plane angle is too steep
+    [tag_pitch_rad, tag_yaw_rad, tag_roll_rad] = ...
+      tf_euler_inverse(t.tag_rx_deg*radians, t.tag_ry_deg*radians, t.tag_rz_deg*radians);
+    tag_oop_deg = tf_angle_between_euler_poses(tag_pitch_rad/radians, ...
+      tag_yaw_rad/radians, tag_roll_rad/radians, 0, 0, 0);
+    if tag_oop_deg > max_tag_oop_deg,
+      %fprintf('Rejecting pose (%.4f, %.4f, %.4f) -> (%.4f, %.4f, %.4f) due to sharp OOP angle %.4f\n', ...
+      %  t.tag_rx_deg, t.tag_ry_deg, t.tag_rz_deg, ...
+      %  tag_pitch_rad/radians, tag_yaw_rad/radians, tag_roll_rad/radians, ...
+      %  tag_oop_deg);
+      continue;
+    else
+      break;
+    end
+  end
+  
+  rand_ids = randperm(num_random_tag_files);
+  for tag_j = 1:num_rand_tags_per_pose,
+    t.tag_source = fullfile(pwd, random_set_dir, random_tag_files(rand_ids(tag_j)).name);
+    target_seq{length(target_seq)+1} = t; %#ok<*SAGROW>
+  end
+end
+
+%% Aggregate manual trials
 target_trials = {};
 clear t;
 t.target_seq = targets_sweep_tx;
@@ -214,8 +292,11 @@ target_trials{length(target_trials)+1} = t;
 t.target_seq = targets_sweep_roll;
 t.label = strcat(tag_type, '_sweep_roll');
 target_trials{length(target_trials)+1} = t;
+t.target_seq = target_seq;
+t.label = strcat(tag_type, '_random');
+target_trials{length(target_trials)+1} = t;
 
-%% Run trials
+%% Run all trials
 
 node = [];
 for trial_i = 1:length(target_trials),

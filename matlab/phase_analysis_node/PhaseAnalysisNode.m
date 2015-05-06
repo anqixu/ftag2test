@@ -42,7 +42,7 @@ classdef PhaseAnalysisNode < handle
     function obj=PhaseAnalysisNode(tag_type, payload_str)
       % Set global constants
       obj.HIST_MARGIN_RATIO = 0.1;
-      obj.SHOW_ALL_SUBPLOTS = false;
+      obj.SHOW_ALL_SUBPLOTS = true;
       obj.SINGLE_SUBPLOT_SLICE = 1;
       obj.SINGLE_SUBPLOT_FREQ = 2;  
       obj.PLOT_REFRESH_MIN_SEC = 0.5;
