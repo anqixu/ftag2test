@@ -54,8 +54,8 @@ if nargin < 3,
 end
 if nargin < 4,
   %oversamplePct = 0;
-  %oversamplePct = 0.05;
-  oversamplePct = 0.1;
+  oversamplePct = 0.05;
+  %oversamplePct = 0.1;
 end
 M = marginSliceCount;
 S = size(phases, 1);
