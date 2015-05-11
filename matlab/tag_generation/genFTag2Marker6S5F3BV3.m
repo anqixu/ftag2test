@@ -24,6 +24,9 @@ function [tag, phase_ids] = genFTag2Marker6S5F3BV3(payload_bits, tagWidthPx)
 % imshow(tag, 'border', 'tight');
 
 payload_bits = (payload_bits ~= 0);
+if size(payload_bits, 1) == 6 && size(payload_bits, 2) == 10,
+  payload_bits = payload_bits';
+end
 if size(payload_bits, 1) > 1 && size(payload_bits, 2) > 1,
   payload_bits = reshape(payload_bits, 60, 1);
 end

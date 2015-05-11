@@ -39,8 +39,8 @@
   <node pkg="nodelet" type="nodelet" name="$(arg nodelet_name)"
         args="load ftag2/ftag2_reader_nodelet nodelet_manager">
     <!-- tag_type must have numerical value, with #S#F###B format -->
-    <!-- param name="tag_type" type="int" value="6533322" / -->
-    <param name="tag_type" type="int" value="6222" /> 
+    <param name="tag_type" type="int" value="6533222" />
+    <!-- param name="tag_type" type="int" value="6222" / -->
         
     <param name="camera_intrinsic" value="724.26406871, 0.0, 400.0, 0.0, 724.26406871, 300.0, 0.0, 0.0, 1.0" />
     <param name="camera_distortion" value="0.0, 0.0, 0.0, 0.0, 0.0" />

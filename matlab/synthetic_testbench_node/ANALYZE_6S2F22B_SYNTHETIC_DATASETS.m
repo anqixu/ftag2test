@@ -1,4 +1,4 @@
-%% Reset workspace
+%% Reset workspace, then create or load datasets
 
 clear all;
 INIT_WORKSPACE;
@@ -7,8 +7,6 @@ close all;
 trial_ids = {'sweep_tx', 'sweep_ty', 'sweep_tz', 'sweep_pitch', 'sweep_yaw', 'sweep_roll', 'random'};
 sweep_feature_vars = {'tag_tx_m', 'tag_ty_m', 'tag_tz_m', 'tag_rx_deg', 'tag_ry_deg', 'tag_rz_deg'};
 fig_i = 1;
-
-%% Create or load datasets
 
 dataset_dir = '../ftag2_datasets';
 all_trials_file = fullfile(dataset_dir, 'trials', '6s2f22b_all_trials.processed.mat');
@@ -129,7 +127,7 @@ if APPLY_FILTER,
   end
 end
 
-%% Display mis-detection and multi-detections
+% Display mis-detection and multi-detections
 fprintf('%11s:\t%9s\t%9s\t%9s\t%6s\n', 'TRIAL', '0-DET', 'N-DET', 'FILTERED', 'OBS');
 for trial_i = 1:length(trial_ids),
   trial_id = trial_ids{trial_i};
@@ -148,6 +146,16 @@ end
 fprintf('\n');
 
 %% Plot 0-detections vs sweep trials
+%
+% *RESULTS:*
+%
+% * tx & ty: decoder fails when tag is moved out of viewport, as expected
+% * tz: decoder fails when tag is too close to keep all in viewport;
+%       expect black-border check to fail more and more as tag moves away
+% * rx & ry (tag pitch / yaw, a.k.a. out-of-plane rotations):
+%       progressively increased failure as O-O-P angle approaches +/- 90'
+% * rz (tag roll, a.k.a. in-plane rotation): no failures for planar tag,
+%       as expected
 
 for trial_i = 1:(length(trial_ids)-1), % skip random
   trial_id = trial_ids{trial_i};
@@ -207,18 +215,18 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
   title('Histogram');
 end
 
-%%
+%% Compute and visualize 0-detections in random set
+%
 % *RESULTS:*
 %
-% * tx & ty: decoder fails when tag is moved out of viewport, as expected
-% * tz: decoder fails when tag is too close to keep all in viewport;
-%       expect black-border check to fail more and more as tag moves away
+% * tx & ty: few 0-det; increases slightly when tag is moved away
+%       from center of image
+% * tz: concentration of 0-dets at near range, presumably due to tag
+%       partially out of view frustum
 % * rx & ry (tag pitch / yaw, a.k.a. out-of-plane rotations):
-%       progressively increased failure as O-O-P angle approaches +/- 90'
-% * rz (tag roll, a.k.a. in-plane rotation): no failures for planar tag,
-%       as expected
-
-%% Compute 0-detections in random set
+%       mostly uniform; 0-det increases slightly when tag is rotated
+%       away from planar pose (at OOP angles > 55')
+% * rz (tag roll, a.k.a. in-plane rotation): mostly uniform 0-det dist
 
 zero_idx = (trials.random.seqds.ftag2_num_tags_detected == 0);
 NUM_TAGS_PER_RANDOM_POSE = 10;
@@ -251,8 +259,6 @@ rds = mat2dataset(random_zero_det_poses, 'VarNames', { ...
   });
 %}
 
-%% Visualize 0-detections in random set as fn of tag pose
-
 num_hist_bins = 40;
 for pose_var_cell = rds.Properties.VarNames(2:end),
   pose_var = pose_var_cell{1};
@@ -263,19 +269,20 @@ for pose_var_cell = rds.Properties.VarNames(2:end),
   ylabel('Histogram counts');
 end
 
-%%
+%% Plot tag pose accuracies for sweep sets
+%
 % *RESULTS:*
 %
-% * tx & ty: few 0-det; increases slightly when tag is moved away
-%       from center of image
-% * tz: concentration of 0-dets at near range, presumably due to tag
-%       partially out of view frustum
-% * rx & ry (tag pitch / yaw, a.k.a. out-of-plane rotations):
-%       mostly uniform; 0-det increases slightly when tag is rotated
-%       away from planar pose (at OOP angles > 55')
-% * rz (tag roll, a.k.a. in-plane rotation): mostly uniform 0-det dist
-
-%% Plot tag pose accuracies for sweep sets
+% * tx & ty: small, zero-mean errors; magnitude & sign strongly correlated
+%       to sweep feature's value
+% * tz: error magnitude generally grows as tag moves further, with
+%       high-rate sawtooth pattern hypothesized due to pixel-level jitter
+%       during sweep
+% * rx & ry (tag pitch & yaw, a.k.a. out-of-plane rotations):
+%       small, zero-mean errors; low-rate linear dependency on sweep var &
+%       high-rate sawtooth pattern hypothesized due to pixel-level jitter
+% * rz (tag roll, a.k.a. in-plane rotation): small, zero-mean errors;
+%      no visual dependence on sweep var
 
 num_hist_bins = 20;
 for trial_i = 1:(length(trial_ids)-1), % skip random
@@ -328,23 +335,16 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
   ylabel(diff_pose_var, 'interpreter', 'none');
 end
 
-%%
+%% Plot tag pose accuracies for random set
+%
 % *RESULTS:*
 %
-% * tx & ty: small, zero-mean errors; magnitude & sign strongly correlated
-%       to sweep feature's value
-% * tz: clear error bias, hypothesized due to quad detector always
-%       underestimating quad & biased camera intrinsics matrix;
-%       error magnitude generally grows as tag moves further, with
-%       high-rate sawtooth pattern hypothesized due to pixel-level jitter
-%       during sweep
-% * rx & ry (tag pitch & yaw, a.k.a. out-of-plane rotations):
-%       small, zero-mean errors; low-rate linear dependency on sweep var &
-%       high-rate sawtooth pattern hypothesized due to pixel-level jitter
-% * rz (tag roll, a.k.a. in-plane rotation): small, zero-mean errors;
-%      no visual dependence on sweep var
-
-%% Plot tag pose accuracies for random set
+% * tx, ty, tz: normal-distributed small errors
+% * rx, ry (tag pitch / yaw, a.k.a. out-of-plane rotations):
+%   normal-distributed small errors; certain amount of large angular errors
+%   filtered due to quad-to-3D ambiguities with solvePnP
+% * rz (tag roll, a.k.a. in-plane rotation):
+%       normal-distributed small errors
 
 % Isolate one obs per tag detection
 tds = trials.random.ds;
@@ -383,17 +383,41 @@ for pose_var_cell = pose_vars,
 %   axis(ax);
 end
 
-%%
+%% Plot phase payload errors vs sweep trials
+%
 % *RESULTS:*
 %
-% * tx, ty, tz: normal-distributed small errors
-% * rx, ry (tag pitch / yaw, a.k.a. out-of-plane rotations):
-%   normal-distributed small errors; but *unexpectedly high outlier count*:
-%   suspect due to solvePnP-related error
-% * rz (tag roll, a.k.a. in-plane rotation):
-%       normal-distributed small errors
-
-%% Plot phase payload errors vs sweep trials
+% * freq: clear *linear* scaling of error *variance* observed by comparing
+%         freq=1 and freq=2 plots
+% * tx: *constant error bias* additionally with *some variance*;
+%       hypothesize due to sub-pixel sampling of tag texture causing sine
+%       signal irregularities as tx sweeps, leading to sawtooth error
+%       pattern
+% * ty: *constant error bias* with near-zero variance per sine signal;
+%       hypothesize due to vertical translational invariance in FTag2
+%       quad detector
+% * tz: near-0 error bias; *linear variance growth* as tag moves away;
+%       sawtooth error pattern hypothesized due to sub-pixel sampling
+%       (same as tx)
+% * rx (tag pitch): *positive error bias* with parabolic shape vs
+%       angle; when viewed as tag_height_oop_multiplier = cos(tag_pitch),
+%       see clear *linear bias scaling* (increased error when multiplier
+%       approaches 0); sign flip in phase error at large out-of-plane
+%       angles (>70') hypothesized due to severely poor ray sampling of
+%       limited-sized tag in image (thus propose not to model)
+% * ry (tag yaw): manual follow-up inspections show that some slices have
+%       *feature-signed* parabolic-S shape while others have
+%       *feature-unsigned* parabolic shape (hypothesize possibly related to
+%       phase payload + caused by over-sampling black border on either
+%       end of ray);
+%       different error bias in [-20', 20'] range suspect due to other
+%       variates overwhelming effects of ry
+% * rz (tag roll): significant *error biases*, where sign of bias
+%      consistently differs for [45', 215'] range and for [215', -45']
+%      range; error variance remains relatively constant w.r.t. rz
+%
+% Most visible outliers in signed phase error are caused by ray
+% undersampling, due to rounding & bilinear-interpolation inaccuracies
 
 for trial_i = 1:(length(trial_ids)-1), % skip random
   trial_id = trial_ids{trial_i};
@@ -461,39 +485,21 @@ for trial_i = 1:(length(trial_ids)-1), % skip random
   end
 end
 
-%%
+%% Plot phase payload errors vs features in random set
+%
 % *RESULTS:*
 %
 % * freq: clear *linear* scaling of error *variance* observed by comparing
-%         freq=1 and freq=2 plots
-% * tx: *constant error bias* additionally with *some variance*;
-%       hypothesize due to sub-pixel sampling of tag texture causing sine
-%       signal irregularities as tx sweeps, leading to sawtooth error
-%       pattern
-% * ty: *constant error bias* with near-zero variance per sine signal;
-%       hypothesize due to vertical translational invariance in FTag2
-%       quad detector
-% * tz: near-0 error bias; *linear variance growth* as tag moves away;
-%       sawtooth error pattern hypothesized due to sub-pixel sampling
-%       (same as tx)
-% * rx (tag pitch): *positive error bias* with parabolic shape vs
-%       angle; when viewed as tag_height_oop_multiplier = cos(tag_pitch),
-%       see clear *linear bias scaling* (increased error when multiplier
-%       approaches 0); sign flip in phase error at large out-of-plane
-%       angles (>70') hypothesized due to severely poor ray sampling of
-%       limited-sized tag in image (thus propose not to model)
-% * ry (tag yaw): manual follow-up inspections show that some slices have
-%       *feature-signed* parabolic-S shape while others have
-%       *feature-unsigned* parabolic shape (hypothesize possibly related to
-%       phase payload + caused by over-sampling black border on either
-%       end of ray);
-%       different error bias in [-20', 20'] range suspect due to other
-%       variates overwhelming effects of ry
-% * rz (tag roll): significant *error biases*, where sign of bias
-%      consistently differs for [45', 215'] range and for [215', -45']
-%      range; error variance remains relatively constant w.r.t. rz
-
-%% Plot phase payload errors vs features in random set
+%       freq=1 and freq=2 plots
+% * tx & ty: no distinguishable relationship to constant error variance
+% * tz: magnitude of error grows as tag moves away from camera, as expected
+% * rx & ry (tag pitch and yaw): no distinguishable patterns to constant
+%       error variance
+% * rz (tag roll) & imgRot (tag 90-rotation ID):
+%       piecewise biases similar to those from sweep rz plots
+%
+% Plot of ftag2_phase_deg vs signed phase error is not surprising, but
+% does at least confirm that *very few errors* bleed over to next bit range
 
 trial_i = length(trial_ids); % only random
 trial_id = trial_ids{trial_i};
@@ -534,8 +540,6 @@ for filter_freq = 1:trials.(trial_id).tag_num_freqs,
   %   title(title_str);
   end
 end
-
-% TODO: analyses
 
 %% Show relationship between tag roll and rot90 value
 %

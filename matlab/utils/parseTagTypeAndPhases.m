@@ -23,6 +23,8 @@ function [tag_type_id, num_slices, num_freqs, bit_pattern, gt_phases] = parseTag
     tag_type_id = 653;
   elseif strcmpi(tag_type, '6S5F33322B'),
     tag_type_id = 6533322;
+  elseif strcmpi(tag_type, '6S5F33222B'),
+    tag_type_id = 6533222;
   else
     error('parseGroundTruth:TagType', 'Unrecognized tag_type, expecting format #S#F#<...>B: %s', tag_type);
   end

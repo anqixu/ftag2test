@@ -29,6 +29,9 @@ num_payload_bits = num_payload_bits_per_slice * num_slices;
 
 % Format payload bits into column vector
 payload_bits = (payload_bits ~= 0);
+if size(payload_bits, 1) == 6 && size(payload_bits, 2) == 2,
+  payload_bits = payload_bits';
+end
 if size(payload_bits, 1) > 1 && size(payload_bits, 2) > 1,
   payload_bits = reshape(payload_bits, num_payload_bits, 1);
 end

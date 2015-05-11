@@ -1,4 +1,4 @@
-%% Reset workspace
+%% Reset workspace, then create or load datasets
 
 clear all;
 INIT_WORKSPACE;
@@ -7,8 +7,6 @@ close all;
 trial_ids = {'sweep_tx', 'sweep_ty', 'sweep_tz', 'sweep_pitch', 'sweep_yaw', 'sweep_roll', 'random'};
 sweep_feature_vars = {'tag_tx_m', 'tag_ty_m', 'tag_tz_m', 'tag_rx_deg', 'tag_ry_deg', 'tag_rz_deg'};
 fig_i = 1;
-
-%% Create or load datasets
 
 dataset_dir = '../ftag2_datasets';
 all_trials_file = fullfile(dataset_dir, 'trials', '6s2f22b_all_trials.processed.mat');
@@ -100,7 +98,7 @@ if APPLY_FILTER,
   end
 end
 
-%% Display mis-detection and multi-detections
+% Display mis-detection and multi-detections
 fprintf('%11s:\t%9s\t%9s\t%9s\t%6s\n', 'TRIAL', '0-DET', 'N-DET', 'FILTERED', 'OBS');
 for trial_i = 1:length(trial_ids),
   trial_id = trial_ids{trial_i};
@@ -128,6 +126,14 @@ biasModelSimple = strcat('diff_phase_deg ~ ', ...
   ' + ftag2_tag_img_rot*tag_freq', ...
   '');
 
+% WARNING: Using a linear dependency on ftag2_width_px
+%  (\prop tag_width_m/tag_tz_m) is equivalent a 1/z harmonic dependency
+%  on tag_tz_m. Thus, using such a model will result in an
+%  infinity-asymptotical over-compensation of the predicted bias, at small
+%  tag_tz_m distances from camera. Additionally, this effect is triply
+%  amplified by the interaction term "ftag2_width_px*quad_diag13_px2",
+%  since both "ftag2_width_px" and "quad_diag13_px" individually are
+%  harmonically-related to tag_tz_m
 biasModelQuad = strcat('diff_phase_deg ~ ', ...
   ' 1', ...
   ' + ftag2_tag_img_rot*tag_freq', ...
@@ -148,18 +154,21 @@ biasModelPose = strcat('diff_phase_deg ~ ', ...
   ' + ftag2_tag_img_rot*ftag2_yaw_width_scale', ...
   '');
 
-%% Inspect informally performance of linear regressions on phase bias
+% Inspect informally performance of linear regressions on phase bias
 
 biasFitSimpleAll = fitlm(tds, biasModelSimple, ...
   'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx);
+disp('BIAS FIT SIMPLE:');
 disp(biasFitSimpleAll);
 disp(biasFitSimpleAll.anova);
 
+disp('BIAS FIT QUAD (DAVID):');
 biasFitQuadAll = fitlm(tds, biasModelQuad, ...
   'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx);
 disp(biasFitQuadAll);
 disp(biasFitQuadAll.anova);
 
+disp('BIAS FIT POSE (ANQI):');
 biasFitPoseAll = fitlm(tds, biasModelPose, ...
   'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', tds_exclude_idx);
 disp(biasFitPoseAll);
@@ -177,25 +186,29 @@ xval_subset_size = floor(total_num_obs*(1-TEST_SET_RATIO)/N_FOLD_XVAL);
 xval_set_ids = repmat(1:N_FOLD_XVAL, xval_subset_size, 1);
 set_type_ids(1:numel(xval_set_ids)) = xval_set_ids(:);
 
-biasFitXval = cell(N_FOLD_XVAL, 1);
+biasFitTrain = cell(N_FOLD_XVAL, 1);
 best_fit_idx = 0;
 best_fit_RMSE = inf;
 worst_fit_idx = 0;
 worst_fit_RMSE = 0;
 for xval_id = 1:N_FOLD_XVAL,
-  biasFitXval{xval_id} = fitlm(tds, biasModelXval, ...
+  biasFitTrain{xval_id} = fitlm(tds, biasModelXval, ...
     'CategoricalVars', {'ftag2_tag_img_rot'}, ...
-    'Exclude', tds_exclude_idx | (set_type_ids ~= xval_id));
-  if biasFitXval{xval_id}.RMSE < best_fit_RMSE,
-    best_fit_RMSE = biasFitXval{xval_id}.RMSE;
+    'Exclude', (tds_exclude_idx | (set_type_ids == xval_id) | (set_type_ids == 0)));
+  dsXval = tds(~tds_exclude_idx & (set_type_ids == xval_id), :);
+  pred_diff_phase_deg = biasFitTrain{xval_id}.predict(dsXval);
+  RMSE = sqrt(mean(angularDiff(dsXval.diff_phase_deg, pred_diff_phase_deg).^2));
+  
+  if RMSE < best_fit_RMSE,
+    best_fit_RMSE = RMSE;
     best_fit_idx = xval_id;
   end
-  if biasFitXval{xval_id}.RMSE > worst_fit_RMSE,
-    worst_fit_RMSE = biasFitXval{xval_id}.RMSE;
+  if RMSE > worst_fit_RMSE,
+    worst_fit_RMSE = RMSE;
     worst_fit_idx = xval_id;
   end
 end
-biasFit = biasFitXval{best_fit_idx};
+biasFit = biasFitTrain{best_fit_idx};
 
 testds = tds(~(tds_exclude_idx | (set_type_ids ~= 0)), :);
 pred_diff_phase_deg = biasFit.predict(testds);
@@ -232,7 +245,7 @@ if apply_bias_model,
   %            errors, so it DOES NOT MATTER which bias correction model used
 
   trial_id = 'random';
-  NUM_TAGS_PER_RANDOM_POSE = 10;
+  NUM_TAGS_PER_RANDOM_POSE = 6;
   NUM_FREQS = trials.(trial_id).tag_num_freqs;
   tds = trials.(trial_id).ds;
   tds_exclude_idx = trials.(trial_id).ds_exclude_idx;
@@ -285,7 +298,7 @@ if apply_bias_model,
   gds.stdev_diff_phase_wo_bias_deg = nan(size(gds, 1), 1);
   num_groups = size(gds, 1);
   for gds_i = 1:num_groups,
-    if mod(gds_i, 100) == 0,
+    if mod(gds_i, 1000) == 0,
       fprintf('-- Processing group %4d/%4d\n', gds_i, num_groups);
     end
       
@@ -483,6 +496,7 @@ fitStdevSimple = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
     ' + tag_freq', ...
     ''), ...
     'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx);
+disp('STDEV FIT SIMPLE:');
 disp(fitStdevSimple);
 disp(fitStdevSimple.anova);
 
@@ -497,6 +511,7 @@ fitStdevDavid = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
     ' + quad_diag13_px_sqrd*quad_diag_sqrd_ratio', ...
     ''), ...
     'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx);
+disp('STDEV FIT QUAD (DAVID):');
 disp(fitStdevDavid);
 disp(fitStdevDavid.anova);
 
@@ -509,6 +524,7 @@ fitStdevAnqi = fitlm(gds, strcat('stdev_diff_phase_wo_bias_deg ~ ', ...
     ' + ftag2_yaw_width_scale', ...
     ''), ...
     'CategoricalVars', {'ftag2_tag_img_rot'}, 'Exclude', gds_exclude_idx);
+disp('STDEV FIT POSE (ANQI):');
 disp(fitStdevAnqi);
 disp(fitStdevAnqi.anova);
 
