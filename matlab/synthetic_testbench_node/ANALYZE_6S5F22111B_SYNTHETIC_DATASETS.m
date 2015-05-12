@@ -9,28 +9,28 @@ sweep_feature_vars = {'tag_tx_m', 'tag_ty_m', 'tag_tz_m', 'tag_rx_deg', 'tag_ry_
 fig_i = 1;
 
 dataset_dir = '../ftag2_datasets';
-all_trials_file = fullfile(dataset_dir, 'trials', '6s5f33222b_all_trials.processed.mat');
+all_trials_file = fullfile(dataset_dir, 'trials', '6s5f22111b_all_trials.processed.mat');
 
 generate_tag_images = false;
 synthesize_and_decode_scenes = false;
 process_raw_trials = false;
 
 if generate_tag_images,
-  GENERATE_6S5F33222B_DATASETS; %#ok<*UNRCH>
+  GENERATE_6S5F22111B_DATASETS; %#ok<*UNRCH>
   synthesize_and_decode_scenes = true;
 end
 
 if synthesize_and_decode_scenes,
   input('Start "roslaunch ftag2test synthetic_testbench.launch", then press ENTER to continue');
-  SYNTHESIZE_6S5F33222B_MANUAL_DATASET;
-  SYNTHESIZE_6S5F33222B_RANDOM_DATASET;
+  SYNTHESIZE_6S5F22111B_MANUAL_DATASET;
+  SYNTHESIZE_6S5F22111B_RANDOM_DATASET;
   process_raw_trials = true;
 end
 
 if process_raw_trials,
   clear trials;
   for i = 1:length(trial_ids),
-    ind_trial_file = sprintf('%s/trials/6s5f33222b_%s.mat', dataset_dir, trial_ids{i});
+    ind_trial_file = sprintf('%s/trials/6s5f22111b_%s.mat', dataset_dir, trial_ids{i});
     fprintf('\nPROCESSING %s...\n\n', ind_trial_file);
     load(ind_trial_file);
     trials.(trial_ids{i}) = processProgressSeq(progress_seq, trial_ids{i});

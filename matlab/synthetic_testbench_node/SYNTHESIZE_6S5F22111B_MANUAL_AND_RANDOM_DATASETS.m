@@ -4,10 +4,10 @@ clear all;
 INIT_WORKSPACE;
 
 %% Specify configuration and initialize constants for manual set
-manual_set_dir = '../ftag2_datasets/6S5F33222B_manual_set/';
-random_set_dir = '../ftag2_datasets/6S5F33222B_random_set/';
+manual_set_dir = '../ftag2_datasets/6S5F22111B_manual_set/';
+random_set_dir = '../ftag2_datasets/6S5F22111B_random_set/';
 trials_dir = '../ftag2_datasets/trials/';
-tag_type = '6s5f33222b';
+tag_type = '6s5f22111b';
 rng_seed = 1730;
 
 sweep_num_samples = 1000;
