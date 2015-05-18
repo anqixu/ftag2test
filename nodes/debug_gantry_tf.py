@@ -49,8 +49,8 @@ class GantryTF():
       tf.transformations.quaternion_from_euler(0, 0, -state[5]*radians),
       rospy.Time.now(),
       "flange", "hand")
-    self.tf_broadcaster.sendTransform((0, 0, -0.02),
-      tf.transformations.quaternion_from_euler(0, 0, 0),
+    self.tf_broadcaster.sendTransform((0, 0, -0.035),
+      tf.transformations.quaternion_from_euler(0, 0, 135*radians),
       rospy.Time.now(),
       "tag", "flange")
 

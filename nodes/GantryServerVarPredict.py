@@ -2,9 +2,9 @@
 import rospy
 import roslib
 from ftag2test.msg import ControllerState
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64MultiArray, MultiArrayDimension
 from geometry_msgs.msg import PoseStamped
-from ftag2.msg import TagDetection, TagDetections
+from ftag2_core.msg import TagDetection, TagDetections
 from sensor_msgs.msg import Image, CameraInfo
 
 import tf
@@ -52,8 +52,7 @@ rotations_y = [52-45, 52, 52+45, 52+90]
 # pitch_deg: 0 - 90 (positive = pitch up from ground towards horizontal)
 # yaw_deg: 0 - 360 (positive = rotate hand joint clockwise)
 
-maxNumTagsPerPose = 20
-maxNumTagsPerPose = 500
+maxNumTagsPerPose = 5
 maxNumDetections = 4
 
 DETECTION_TIMEOUT_DURATION = 0.1
@@ -62,7 +61,7 @@ WHITE_TIMEOUT_DURATION = 0.9
 HTTP_SLEEP_TIME = 0.01
 MAIN_THREAD_SLEEP_TIME = 0.001
 TIME_WAIT_FOR_IMAGE_TO_LOAD = 1.0
-NUM_FAILURES_UNTIL_NEXT_TAG = 15
+NUM_FAILURES_UNTIL_NEXT_TAG = 10
 NUM_FAILURES_UNTIL_NEXT_POSE = maxNumTagsPerPose / 3
 
 PYCHARM_KEYBOARD = False
@@ -80,7 +79,7 @@ detection_timeout_s = 0.45
 
 refresh_sec = 30
 
-families = ['ftag2_6s2f21b','ftag2_6s2f22b','ftag2_6s3f211b','ftag2_6s5f3b','ftag2_6s5f33322b']
+tag_family = 'ftag2_6S2F22B'
 # imagePaths = [os.path.abspath('../html/images/ftag2_6s2f21b')]
 #     imagePaths.extend([os.path.abspath('../html/images/ftag2_6s2f22b')])
 #     imagePaths.extend([os.path.abspath('../html/images/ftag2_6s3f211b')])
@@ -306,26 +305,35 @@ class GantryServer:
     def GantryStateCB(self, state):
         #     print 'State: ', state
 
-        gantry_pose = PoseStamped()
+        # gantry_pose = PoseStamped()
 
         self.mutex.acquire()
-        self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
+        self.new_pose = [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
+        dim = MultiArrayDimension()
+        dim.label = 'width'
+        dim.size = 6
+        dim.stride = 6
+        msg = Float64MultiArray()
+        msg.layout.data_offset = 0
+        msg.layout.dim.append(dim)
+        msg.data = self.new_pose
+        self.gantry_state_pub.publish(msg)
         self.mutex.release()
         #     pose.header.frame_id = frame_id
         #     pose.header.stamp = rospy.Time.now()
 
-        gantry_pose.pose.position.x = state.x_m
-        gantry_pose.pose.position.y = state.y_m
-        gantry_pose.pose.position.z = state.z_m
+        # gantry_pose.pose.position.x = state.x_m
+        # gantry_pose.pose.position.y = state.y_m
+        # gantry_pose.pose.position.z = state.z_m
         #
-        quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
+        # quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
 
-        gantry_pose.pose.orientation.x = quaternion[0]
-        gantry_pose.pose.orientation.y = quaternion[1]
-        gantry_pose.pose.orientation.z = quaternion[2]
-        gantry_pose.pose.orientation.w = quaternion[3]
+        # gantry_pose.pose.orientation.x = quaternion[0]
+        # gantry_pose.pose.orientation.y = quaternion[1]
+        # gantry_pose.pose.orientation.z = quaternion[2]
+        # gantry_pose.pose.orientation.w = quaternion[3]
         #
-        self.gantry_state_pub.publish(gantry_pose)
+        # self.gantry_state_pub.publish(gantry_pose)
 
     def chunks(self, l, n):
         """ Yield successive n-sized chunks from l.
@@ -449,7 +457,7 @@ class GantryServer:
             self.PositionGrid = pickle.load(infile)
             infile.close()
 
-        self.PositionGrid = [ [0, 0, 0] ]
+        # self.PositionGrid = [ [0, 0, 0] ]
         print 'Num. points: ', len(self.PositionGrid)
 
         print 'file closed'
@@ -504,7 +512,7 @@ class GantryServer:
 
         self.state_pub = rospy.Publisher('/gantry/controller_state', ControllerState, queue_size=10)
         # self.string_pub = rospy.Publisher('/ftag2test', String, queue_size=10)
-        self.gantry_state_pub = rospy.Publisher('/gantry/gantry_state', PoseStamped, queue_size=10)
+        self.gantry_state_pub = rospy.Publisher('/gantry/gantry_state', Float64MultiArray, queue_size=10)
         self.ftag2_sub = rospy.Subscriber('/ftag2/detected_tags',TagDetections, self.processDet)
         self.ftag2_pub = rospy.Publisher('/gantry/detected_tags',TagDetections, queue_size = 1)
         self.image_sub = rospy.Subscriber("/camera1/image_raw", Image, self.processIm,  queue_size = 1)
@@ -516,9 +524,9 @@ class GantryServer:
         self.final_camera_info_pub = rospy.Publisher("/camera/camera_info", CameraInfo, queue_size = 1)
         self.failed_camera_info_pub = rospy.Publisher("/gantry/failed/camera_info", CameraInfo, queue_size = 1)
 
-
+        # self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
         self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
-        # self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=False)
+        print 'XXXX'
         self.gantry.write('SPEED 50\r')
                     # self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
         # self.gantry.moveRel(dx_m=1.17, dy_m=0.3, dz_m=0.7, droll_deg=-180.0, dpitch_deg=90.0, dyaw_deg=52.0)
@@ -548,7 +556,7 @@ class GantryServer:
         self.ui_thread = None
         self.tagImageNames = []
         global imagePath
-        imagePath = roslib.packages.get_pkg_dir('ftag2test') + '/html/images/ftag2_6s5f33322b'
+        imagePath = roslib.packages.get_pkg_dir('ftag2test') + '/html/images/ftag2_6S2F22B'
 
         for f in os.listdir(imagePath):
             self.tagImageNames.append(f)
@@ -848,7 +856,7 @@ class GantryServer:
                     dyaw = new_y - self.new_pose[5]
                     self.mutex.release()
 
-                    print '\n\Curr. pose: ', self.new_pose
+                    print '\nCurr. pose: ', self.new_pose
                     #           self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy )
                     self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz, droll_deg = droll, dpitch_deg = dpitch, dyaw_deg = dyaw )
                     pose = sum ([ self.PositionGrid[self.num_positions], [new_r, new_p, new_y] ], [] )
@@ -886,7 +894,6 @@ class GantryServer:
                     self.gantry_timeout.start()
 
                     ##############################################################################
-
                     ##############################################################################
 
             elif self.alive and self.fsm == State.SHOW_TAGS:
@@ -899,7 +906,7 @@ class GantryServer:
 
                 global mutex_new_tag
                 mutex_new_tag.acquire()
-                tagImage = families[4] + '/' + self.tagImageNames[rand_idx]
+                tagImage = tag_family + '/' + self.tagImageNames[rand_idx]
                 NEW_TAG = True
                 mutex_new_tag.release()
                 # TODO: Check if following line doesn't break something
@@ -963,6 +970,7 @@ def main(argv=None):
             raise Usage(msg)
 
         controller = GantryServer()
+        print '1111'
         controller.spin()
 
     except Usage, err:
