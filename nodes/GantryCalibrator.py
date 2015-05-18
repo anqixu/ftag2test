@@ -22,8 +22,8 @@ from threading import Lock
 
 from GantryController import *
 
-from ftag2.msg import TagDetection
-from ftag2.msg import TagDetections
+from ftag2_core.msg import TagDetection
+from ftag2_core.msg import TagDetections
 
 
 HOST_NAME = ''
