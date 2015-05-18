@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="-1.15 -1.15 0.5 0 0 0 world gantry 100" />
+
+  <node pkg="rviz" type="rviz" name="rviz" />
+</launch>
