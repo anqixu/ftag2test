@@ -21,7 +21,10 @@ if __name__ == "__main__":
   msg.layout.data_offset = 0
   msg.layout.dim.append(dim)
   msg.data = [float(v) for v in sys.argv[1:]]
-  rospy.sleep(0.1)
-  pub.publish(msg)
-  rospy.sleep(0.1)
-  pub.publish(msg)
+  i = 0
+  while not rospy.is_shutdown():
+    rospy.sleep(0.1)
+    pub.publish(msg)
+    i += 1
+    if i > 4:
+      break

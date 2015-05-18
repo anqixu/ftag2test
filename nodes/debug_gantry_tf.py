@@ -7,6 +7,9 @@ import math
 from std_msgs.msg import Float64MultiArray
 
 
+radians = math.pi/180.0
+
+
 class GantryTF():
   def __init__(self):
     rospy.init_node('gantry_tf')
@@ -26,20 +29,24 @@ class GantryTF():
     
   
   def publishTF(self, state):
+    self.tf_broadcaster.sendTransform((-1.15, -1.15, 0.3),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "gantry", "world")
     self.tf_broadcaster.sendTransform((state[0], state[1], state[2]),
       tf.transformations.quaternion_from_euler(0, 0, 0),
       rospy.Time.now(),
       "wrist", "gantry")
     self.tf_broadcaster.sendTransform((0, 0, 0),
-      tf.transformations.quaternion_from_euler(0, 0, state[3]/math.pi*180.0),
+      tf.transformations.quaternion_from_euler(0, 0, -state[3]*radians),
       rospy.Time.now(),
       "wrist_twisted", "wrist")
     self.tf_broadcaster.sendTransform((0, 0, 0),
-      tf.transformations.quaternion_from_euler(0, state[4]/math.pi*180.0, 0),
+      tf.transformations.quaternion_from_euler(0, state[4]*radians, 0),
       rospy.Time.now(),
       "hand", "wrist_twisted")
     self.tf_broadcaster.sendTransform((0, 0, -0.07672),
-      tf.transformations.quaternion_from_euler(0, 0, state[5]/math.pi*180.0),
+      tf.transformations.quaternion_from_euler(0, 0, -state[5]*radians),
       rospy.Time.now(),
       "flange", "hand")
     self.tf_broadcaster.sendTransform((0, 0, -0.02),
