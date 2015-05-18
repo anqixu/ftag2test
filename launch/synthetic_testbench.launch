@@ -1,0 +1,64 @@
+<launch>
+  <arg name="cam_name" value="camera" />
+  <arg name="nodelet_name" value="ftag2" />
+
+  <!-- Uncomment only one of the following -->
+  <remap from="/$(arg nodelet_name)/image_in" to="$(arg cam_name)/image_raw" />
+  <!-- remap from="/$(arg nodelet_name)/camera_in" to="$(arg cam_name)/image_raw" /-->
+
+
+  <node pkg="tag_renderer" type="TagRendererNode.py" name="tag_renderer_node" output="screen">
+    <param name="tag_filename" value="" />
+
+    <param name="scene_width_px" value="800" />
+    <param name="scene_height_px" value="600" />
+    <param name="scene_fovy_deg" value="45.0" />
+
+    <param name="default_tag_width_m" value="0.1" />
+    <param name="default_tag_tx_m" value="0.0" />
+    <param name="default_tag_ty_m" value="0.0" />
+    <param name="default_tag_tz_m" value="1.0" />
+    <param name="default_tag_rz_deg" value="0.0" />
+    <param name="default_tag_ry_deg" value="0.0" />
+    <param name="default_tag_rz_deg" value="0.0" />
+    
+    <param name="republish_delay_sec" value="-1" /> <!-- do not republish -->
+    
+    <param name="enable_key_ctrls" value="True" />
+    
+    <param name="publish_after_source_change" value="False" />
+    
+    <remap from="~image_raw" to="$(arg cam_name)/image_raw" />
+    <remap from="~camera_info" to="$(arg cam_name)/camera_info" />
+  </node>
+  
+
+  <!-- node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" launch-prefix="gdb -ex run - -args" / -->
+  <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen"/>
+  
+  <node pkg="nodelet" type="nodelet" name="$(arg nodelet_name)"
+        args="load ftag2/ftag2_reader_nodelet nodelet_manager">
+    <!-- tag_type must have numerical value, with #S#F###B format -->
+    <param name="tag_type" type="int" value="6522111" />
+    <!-- param name="tag_type" type="int" value="6222" / -->
+        
+    <param name="camera_intrinsic" value="724.26406871, 0.0, 400.0, 0.0, 724.26406871, 300.0, 0.0, 0.0, 1.0" />
+    <param name="camera_distortion" value="0.0, 0.0, 0.0, 0.0, 0.0" />
+  
+    <param name="transport_type" value="raw" />
+    <param name="markerWidthM" value="0.1" />
+    
+    <param name="profiler_delay_sec" value="0.0" /> <!-- 0: disable -->
+    
+    <param name="tempTagDecodeStd" value="0.0" /> <!-- WARNING: this completely disables variance-based phase error checker -->
+
+    <!-- custom params -->
+    <param name="quadFastDetector" value="False" />
+    <param name="quadRefineCorners" value="False" />
+    <param name="quadMaxScans" value="200" />
+    <param name="tagMaxStripAvgDiff" value="15.0" />
+    <param name="tagBorderMeanMaxThresh" value="125.0" /> <!-- lax border check okay for synthetic images -->
+    <param name="tagBorderStdMaxThresh" value="90.0" /> <!-- lax border check okay for synthetic images -->
+    <param name="numSamplesPerRow" value="1" />
+  </node>
+</launch>
