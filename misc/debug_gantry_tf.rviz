@@ -10,6 +10,7 @@ Panels:
         - /Axes2
         - /Axes3
         - /Axes4
+        - /Axes6
       Splitter Ratio: 0.5
     Tree Height: 745
   - Class: rviz/Selection
@@ -80,6 +81,20 @@ Visualization Manager:
       Radius: 0.01
       Reference Frame: flange
       Value: true
+    - Class: rviz/Axes
+      Enabled: true
+      Length: 0.1
+      Name: Axes
+      Radius: 0.01
+      Reference Frame: tag
+      Value: true
+    - Class: rviz/Axes
+      Enabled: true
+      Length: 0.1
+      Name: Axes
+      Radius: 0.01
+      Reference Frame: camera
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -116,10 +131,10 @@ Visualization Manager:
         Z: 0.224208
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 0.805398
+      Pitch: 0.645398
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 6.24858
+      Yaw: 0.105399
     Saved: ~
 Window Geometry:
   Displays:
