@@ -4,7 +4,10 @@ roslib.load_manifest('ftag2test')
 import rospy
 import tf
 import math
+import threading
 from std_msgs.msg import Float64MultiArray
+from geometry_msgs.msg import PoseStamped
+
 
 
 radians = math.pi/180.0
@@ -13,22 +16,27 @@ radians = math.pi/180.0
 class GantryTF():
   def __init__(self):
     rospy.init_node('gantry_tf')
+    self.state_idx = -float('inf')
     self.state = [0, 0, 0, 0, 0, 0]
+    self.state_mutex = threading.Lock()
     self.tf_broadcaster = tf.TransformBroadcaster()
-    self.state_sub = rospy.Subscriber('/state', Float64MultiArray, self.handleState)
+    self.tf_listener = tf.TransformListener()
+    self.state_sub = rospy.Subscriber('/gantry_state', Float64MultiArray, self.handleState)
+    self.pose_pub = rospy.Publisher('/gantry_pose', PoseStamped, queue_size=10)
     rospy.loginfo('gantry tf initialized')
 
 
   def handleState(self, msg):
-    if len(msg.data) != 6:
-      rospy.logerr('Expecting 6 entries in state, received %d' % len(msg.data))
+    if len(msg.data) != 7:
+      rospy.logerr('Expecting 7 entries in state, received %d' % len(msg.data))
       return
     rospy.loginfo('Received state: %s' % str(msg.data))
-    #self.publishTF(msg.data)
-    self.state = msg.data
+    with self.state_mutex:
+      self.state_idx = int(msg.data[0])
+      self.state = msg.data[1:]
     
   
-  def publishTF(self, state):
+  def publishTF(self, state_idx, state):
     self.tf_broadcaster.sendTransform((-1.15, -1.15, 0.3),
       tf.transformations.quaternion_from_euler(0, 0, 0),
       rospy.Time.now(),
@@ -53,12 +61,33 @@ class GantryTF():
       tf.transformations.quaternion_from_euler(0, 0, 135*radians),
       rospy.Time.now(),
       "tag", "flange")
+      
+    try:
+      msg = PoseStamped()
+      msg.header.seq = state_idx
+      msg.header.stamp = rospy.Time.now()
+      msg.header.frame_id = 'tag'
+      (trans, rot) = self.tf_listener.lookupTransform("gantry", "tag", rospy.Time(0))
+      msg.pose.position.x = trans[0]
+      msg.pose.position.y = trans[1]
+      msg.pose.position.z = trans[2]
+      msg.pose.orientation.x = rot[0]
+      msg.pose.orientation.y = rot[1]
+      msg.pose.orientation.z = rot[2]
+      msg.pose.orientation.w = rot[3]
+      self.pose_pub.publish(pose)
+    except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+      rospy.logerror('TF transformation exception')
+      continue
 
     
   def spin(self):
-    hz = rospy.Rate(10)
+    hz = rospy.Rate(100)
     while not rospy.is_shutdown():
-      self.publishTF(self.state)
+      with self.state_mutex:
+        state_idx = self.state_idx
+        state = state
+      self.publishTF(state_idx, state)
       hz.sleep()
 
 
