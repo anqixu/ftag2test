@@ -30,7 +30,7 @@ load(all_trials_file);
 APPLY_FILTER = true;
 
 SWEEP_ANGLE_MIN_DEG = 2;
-RANDOM_RXY_MAX_DEG = 9;
+RXY_MAX_DEG = 9;
 QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX = 2;
 PAYLOAD_STR_MAX_DIFF = 7;
 
@@ -41,7 +41,8 @@ for trial_i = 1:length(trial_ids),
   trials.(trial_id).ds_exclude_idx = false(size(trials.(trial_id).ds, 1), 1);
 end
 
-% Filter sweep trials to remove multi-3D-pose ambiguities
+% Filter rx & ry sweep trials to remove multi-3D-pose ambiguities ...
+% ... based on differences in sweep var
 for trial_i = 1:(length(trial_ids) - 1), % skip random
   feature_var = sweep_feature_vars{trial_i};
   if isempty(strfind(feature_var, 'rx')) && ...
@@ -65,16 +66,19 @@ for trial_i = 1:(length(trial_ids) - 1), % skip random
     trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
 end
 
-% Filter random trial to remove multi-3D-pose ambiguities
-trial_id = 'random';
-trial = trials.random;
+% Filter all trials to remove multi-3D-pose ambiguities ...
+% based on rxy differences
 if APPLY_FILTER,
-  parallel_edged_quad_seqds_idx = (trial.seqds.diff_rxy_deg >= RANDOM_RXY_MAX_DEG);
-  parallel_edged_quad_ds_idx = (trial.ds.diff_rxy_deg >= RANDOM_RXY_MAX_DEG);
-  trials.(trial_id).seqds_exclude_idx = ...
-    trials.(trial_id).seqds_exclude_idx | parallel_edged_quad_seqds_idx;
-  trials.(trial_id).ds_exclude_idx = ...
-    trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
+  for trial_i = 1:length(trial_ids),
+    trial_id = trial_ids{trial_i};
+    trial = trials.(trial_id);
+    parallel_edged_quad_seqds_idx = (trial.seqds.diff_rxy_deg >= RXY_MAX_DEG);
+    parallel_edged_quad_ds_idx = (trial.ds.diff_rxy_deg >= RXY_MAX_DEG);
+    trials.(trial_id).seqds_exclude_idx = ...
+      trials.(trial_id).seqds_exclude_idx | parallel_edged_quad_seqds_idx;
+    trials.(trial_id).ds_exclude_idx = ...
+      trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
+  end
 end
 
 % Filter all trials to remove quads near image border, and payloads
