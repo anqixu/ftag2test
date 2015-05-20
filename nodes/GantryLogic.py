@@ -20,9 +20,6 @@ import time
 import numpy
 import pickle
 
-import SimpleHTTPServer
-import BaseHTTPServer
-
 from threading import Lock
 
 from GantryController import *
@@ -58,39 +55,19 @@ maxNumDetections = 4
 DETECTION_TIMEOUT_DURATION = 0.1
 IMAGE_TIMEOUT_DURATION = 6.0
 WHITE_TIMEOUT_DURATION = 0.9
-HTTP_SLEEP_TIME = 0.01
-MAIN_THREAD_SLEEP_TIME = 0.01
 TIME_WAIT_FOR_IMAGE_TO_LOAD = 1.0
 NUM_FAILURES_UNTIL_NEXT_TAG = 10
 NUM_FAILURES_UNTIL_NEXT_POSE = maxNumTagsPerPose / 3
 
 PYCHARM_KEYBOARD = False
 
-# rotations_r = [- math.pi, - math.pi/2, 0, math.pi/2, math.pi]
-# rotations_p = [- math.pi, - math.pi/2, 0, math.pi/2, math.pi]
-# rotations_y = [- math.pi, - math.pi/2, 0, math.pi/2, math.pi]
-# positions_x = [-1.0, -0.5, 0.0, 0.5, 1.0]
-# positions_y = [-1.0, -0.5, 0.0, 0.5, 1.0]
-# positions_z = [-1.0, -0.5, 0.0, 0.5, 1.0]
-
-# ptu_sleep_s = 5.0 # wait for wobble to settle
 displayer_sleep_m = 0.8
 detection_timeout_s = 0.45
 
 refresh_sec = 30
 
 tag_family = 'ftag2_6S2F22B'
-# imagePaths = [os.path.abspath('../html/images/ftag2_6s2f21b')]
-#     imagePaths.extend([os.path.abspath('../html/images/ftag2_6s2f22b')])
-#     imagePaths.extend([os.path.abspath('../html/images/ftag2_6s3f211b')])
-#     imagePaths.extend([os.path.abspath('../html/images/ftag2_6s5f3b')])
-#     imagePaths.extend([os.path.abspath('../html/images/ftag2_6s5f33322b')])
-#     imagePaths.extend([os.path.abspath('../html/images/apriltag_36h11')])
-#     imagePaths.extend([os.path.abspath('../html/images/artag')])
-#     imagePaths.extend([os.path.abspath('../html/images/artag_rand50')])
-#     imagePaths.extend([os.path.abspath('../html/images/aruco')])
-
-tagImage = 'artag/Tux.png'
+tagImage = 'robots.jpg'
 
 NEW_TAG = False
 
@@ -119,122 +96,6 @@ class TagsEntry:
         self.pose_count = pos_count
         self.rotation_count = rot_count
         self.frameID = frameID
-
-
-class MyHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
-
-    def dtor(self):
-        if self.log:
-            self.log.close()
-            self.log = []
-
-    def display(self, msg):
-        #       print msg
-        deleteme = 0
-
-    def do_HEAD(self):
-        #     print self.path
-        #     print tagImage
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-
-    def do_GET(self):
-        #     self.display('do_GET %s' % self.path)
-        #     if self.path != '/' and self.path != "/favicon.ico":
-        #     print "\n\rSELF PATH: ", self.path
-
-        if self.path == '/':
-            self.do_HEAD()
-            self.writeImage()
-        elif self.path[:8] == '/images/' and len(self.path) > 9:
-            image_path = '../html' + self.path
-            #print '\r\n\r\n\r\nIMAGE PATH: ', image_path
-            #       image_path = tagImage
-            if os.path.isfile(image_path):
-                f = open(image_path, 'rb')
-                self.send_response(200)
-                self.send_header("Content-type", "image/html")
-                self.end_headers()
-                self.wfile.write(f.read())
-                f.close()
-            else:
-                self.send_response(404)
-
-        else:
-            self.do_HEAD()
-            self.writeDefault()
-
-    def do_POST(self):
-        length = int(self.headers.getheader('content-length'))
-        client_data = self.rfile.read(length)
-        #     if client_data and len(client_data) > 0:
-        #       print 'Received AJAX data from client:', client_data
-        #     else:
-        #       print 'Received AJAX POST request from client'
-        #       result = str(time.time())
-        global NEW_TAG
-        global mutex_new_tag
-        mutex_new_tag.acquire()
-        if NEW_TAG == True:
-            result = tagImage
-        else:
-            result = 'False'
-        self.wfile.write(result)
-        #     rospy.sleep(0.5)
-        NEW_TAG = False
-        mutex_new_tag.release()
-
-    def writeFailed(self, err):
-        #     print self.path
-        #     print tagImage
-        self.wfile.write("<p>%s</p>" % err)
-
-    def writeSuccess(self, msg):
-        #     print self.path
-        #     print tagImage
-        self.wfile.write("<p>%s</p>" % msg)
-
-    def writeImage(self):
-        #     tagImage = Gantry.tagImages
-        #     print self.path
-
-        global tagImage
-        global mutex_new_tag
-        mutex_new_tag.acquire()
-        newTagImage = tagImage
-        mutex_new_tag.release()
-        #print '\r\nIN WRITE IMAGE: ', tagImage
-
-        try:
-            image_rot = 0
-
-            # Load template
-            f = open('/home/dacocp/Dropbox/catkin_ws/src/ftag2test/nodes/display.htm.template', 'r')
-            template = f.read()
-            f.close()
-            template = template.replace("TEMPLATE_IMAGE_ROTATION", str(image_rot))
-            #       template = template.replace("images/robots.jpg", "images/" + str(image_filename))
-            template = template.replace("images/robots.jpg", newTagImage)
-            #       template = template.replace("TEMPLATE_TAG_FILENAME", str(image_filename))
-            template = template.replace("TEMPLATE_TAG_FILENAME", newTagImage)
-
-            # Write response
-            self.wfile.write(template)
-        except:
-            e = sys.exc_info()[0]
-            #       self.display('QUERY FAILED: %s' % e)
-            self.wfile.write("<html><head><title>Image Server</title></head>\n")
-            self.wfile.write("<body><p>Query failed: %s</p>" % e)
-            self.wfile.write("</body></html>")
-
-    def writeDefault(self):
-        self.wfile.write("<html><head><title>404</title></head>")
-        self.wfile.write("<body><p>Nothing here</p>")
-        self.wfile.write("<p>You accessed path: %s</p>" % self.path)
-        self.wfile.write("</body></html>")
-
-
 
 class _Getch:
     def __init__(self):
@@ -290,16 +151,6 @@ def dist(p0, p1):
 class GantryServer:
     # FSM Logic:
     #
-    # - Select grid-sampled pan angle, grid-sampled tilt angle (#)
-    # - Requests pan-tilt unit to re-position
-    # - Sleep for a bit
-    # - Select random tag name, random rotation angle (*)
-    # - Request displayer to display random tag name
-    # - Wait for displayer to respond
-    # - Wait for first detection from freq_testbench
-    # - Publish encoded tag phases, along with frame ID of first detection
-    # - Publishes empty, along with frame ID of last accepted detection
-    # - Return to (*) if haven't reached T iterations, else return to (#); and if all poses have been iterated over, then idle
 
 
     def GantryStateCB(self, state):
@@ -558,15 +409,6 @@ class GantryServer:
         self.ui_thread = threading.Thread(target=self.ui_loop)
         self.ui_thread.start()
 
-        handler = MyHandler
-        server_class = BaseHTTPServer.HTTPServer
-        self.httpd = server_class((HOST_NAME, PORT_NUMBER), handler)
-        self.httpd.timeout = 1
-
-        print '%s server started - %s:%s' % (time.asctime(), HOST_NAME, PORT_NUMBER)
-        self.http_req_thread = threading.Thread(target=self.http_req_loop)
-        self.http_req_thread.start()
-
 
     def shutdown(self):
         self.gantry.suicide()
@@ -684,13 +526,6 @@ class GantryServer:
             #       mutex_new_tag.release()
 
             # self.fsm = State.SHOW_TAGS
-
-
-    def http_req_loop(self):
-        time.sleep(2)
-        while not rospy.is_shutdown():
-            self.httpd.handle_request()
-            time.sleep(HTTP_SLEEP_TIME)
 
 
     def processIm(self, msg):
@@ -895,7 +730,6 @@ class GantryServer:
                 NEW_TAG = True
                 mutex_new_tag.release()
                 # TODO: Check if following line doesn't break something
-                self.httpd.handle_request()
                 self.last_show_cmd = "show: " + self.tagImageNames[rand_idx]
                 print '\n\r', self.last_show_cmd
 
