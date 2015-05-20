@@ -12,13 +12,15 @@ import BaseHTTPServer
 
 
 
-HOST_NAME = ''
+HOST_NAME = '192.168.43.117'
 PORT_NUMBER = 8888
 
 
 
 class HTTPImageServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
   def do_GET(self):
+    print 'do_GET: ' + self.path
+    
     if self.path == '/': # client loading page for first time
       self.do_HEAD()
       self.wfile.write(self.server.image_page_template)
@@ -27,7 +29,7 @@ class HTTPImageServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
       self.send_response(404)
       
     elif self.path[:8] == '/images/' and len(self.path) > 9: # client requesting specific image to load
-      image_path = '../html' + self.path
+      image_path = self.server.ros_package_path + '/html' + self.path
       try:
         f = open(image_path, 'rb')
         self.do_HEAD()

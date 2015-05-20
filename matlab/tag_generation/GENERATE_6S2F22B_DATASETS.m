@@ -5,10 +5,10 @@ INIT_WORKSPACE;
 
 %% Specify configuration and initialize constants
 dataset_dir = '../ftag2_datasets/';
-tag_width_px = 1000;
-tag_with_border_width_px = 1000;
-num_random_tags = 10000;
-rng_seed = 3;
+tag_width_px = 500;
+tag_with_border_width_px = 500;
+num_random_tags = 1000;
+rng_seed = 1729;
 
 rng(rng_seed);
 
