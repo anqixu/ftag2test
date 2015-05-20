@@ -5,10 +5,10 @@ INIT_WORKSPACE;
 
 %% Specify configuration and initialize constants
 dataset_dir = '../ftag2_datasets/';
-tag_width_px = 500;
-tag_with_border_width_px = 500;
-num_random_tags = 1000;
-rng_seed = 1729;
+tag_width_px = 1000;
+tag_with_border_width_px = 1000;
+num_random_tags = 10000;
+rng_seed = 3;
 
 rng(rng_seed);
 
@@ -37,7 +37,7 @@ manual_set_payload_bits = { ...
   };
 
 %% Specify payloads for random-sampled tags for 6S2F22B family
-all_IDs_perm = randperm(2^18); % WARNING: enumeration will be slow depending on number of bits being encoded!
+all_IDs_perm = randperm(2^18)-1; % WARNING: enumeration will be slow depending on number of bits being encoded!
 random_set_payload_bits = cell(1, num_random_tags);
 for random_tag_idx = 1:num_random_tags,
   ID = all_IDs_perm(random_tag_idx);

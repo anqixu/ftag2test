@@ -2,7 +2,7 @@
 import rospy
 import roslib
 from ftag2test.msg import ControllerState
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64MultiArray, MultiArrayDimension
 from geometry_msgs.msg import PoseStamped
 
 import random
@@ -22,8 +22,8 @@ from threading import Lock
 
 from GantryController import *
 
-from ftag2.msg import TagDetection
-from ftag2.msg import TagDetections
+from ftag2_core.msg import TagDetection
+from ftag2_core.msg import TagDetections
 
 
 HOST_NAME = ''
@@ -135,26 +135,35 @@ class GantryServer:
           
   
   def GantryStateCB(self,state):
-#     print 'State: ', state
+    # print 'State: ', state
     
     self.mutex.acquire()
-    self.gantry_pose = PoseStamped()
+    # self.gantry_pose = PoseStamped()
     
-    self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
+    self.new_pose = [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
+    dim = MultiArrayDimension()
+    dim.label = 'width'
+    dim.size = 6
+    dim.stride = 6
+    msg = Float64MultiArray()
+    msg.layout.data_offset = 0
+    msg.layout.dim.append(dim)
+    msg.data = self.new_pose
+    self.gantry_state_pub.publish(msg)
                          
 #     pose.header.frame_id = frame_id
-    self.gantry_pose.header.stamp = rospy.Time.now()
-    self.gantry_pose.pose.position.x = state.x_m
-    self.gantry_pose.pose.position.y = state.y_m
-    self.gantry_pose.pose.position.z = state.z_m
-# #     
-    quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
+#     self.gantry_pose.header.stamp = rospy.Time.now()
+#     self.gantry_pose.pose.position.x = state.x_m
+#     self.gantry_pose.pose.position.y = state.y_m
+#     self.gantry_pose.pose.position.z = state.z_m
+#
+#     quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
     self.mutex.release()
 # 
-    self.gantry_pose.pose.orientation.x = quaternion[0]
-    self.gantry_pose.pose.orientation.y = quaternion[1]
-    self.gantry_pose.pose.orientation.z = quaternion[2]
-    self.gantry_pose.pose.orientation.w = quaternion[3]
+#     self.gantry_pose.pose.orientation.x = quaternion[0]
+#     self.gantry_pose.pose.orientation.y = quaternion[1]
+#     self.gantry_pose.pose.orientation.z = quaternion[2]
+#     self.gantry_pose.pose.orientation.w = quaternion[3]
 # #     
 #     self.gantry_state_pub.publish(gantry_pose)
 
@@ -166,18 +175,18 @@ class GantryServer:
     self.MOVING = True
         
     self.string_pub = rospy.Publisher('/ftag2test', String, queue_size=10)
-    self.gantry_state_pub = rospy.Publisher('/gantry_state', PoseStamped, queue_size=10)
+    self.gantry_state_pub = rospy.Publisher('/gantry_state', Float64MultiArray, queue_size=10)
     self.tag_det_pub = rospy.Publisher('/tag_det', PoseStamped, queue_size=10)
 
     self.tag_sub = rospy.Subscriber('/ftag2/detected_tags', TagDetections, self.processTagDetection)
 
-    self.gantry = GantryController(device='/dev/ttyUSB0', verbose = False, force_calibrate = True, state_cb = self.GantryStateCB)
+    self.gantry = GantryController(device='/dev/ttyUSB0', verbose = False, force_calibrate = False, state_cb = self.GantryStateCB)
 #     self.gantry = GantryController(device='/dev/ttyUSB0', verbose = False, force_calibrate = False, state_cb = self.GantryStateCB)
     self.gantry_pose = PoseStamped()
     self.saved_states = []
     self.gantry.write('SPEED 50\r')
     
-    self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.05, droll_deg=0.0, dpitch_deg=0.0, dyaw_deg=52.0)
+    # self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.05, droll_deg=0.0, dpitch_deg=0.0, dyaw_deg=52.0)
     self.old_pose = [0,0,0,0,0,0]
     self.new_pose = [0,0,0,0,0,0]
 
@@ -351,7 +360,7 @@ class GantryServer:
         
       if not self.alive or self.fsm == State.IDLE:
 #         rospy.sleep(0.1)
-        print '\rMOVING = ', self.MOVING
+#         print '\rMOVING = ', self.MOVING
         time.sleep(0.5)
       
 

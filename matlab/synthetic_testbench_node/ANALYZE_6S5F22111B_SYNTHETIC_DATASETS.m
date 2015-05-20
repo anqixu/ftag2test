@@ -59,7 +59,7 @@ end
 APPLY_FILTER = true;
 
 SWEEP_ANGLE_MIN_DEG = 2;
-RANDOM_RXY_MAX_DEG = 9;
+RXY_MAX_DEG = 9;
 QUAD_CORNER_TO_IMAGE_BORDER_MIN_PX = 2;
 PAYLOAD_STR_MAX_DIFF = 7;
 
@@ -70,7 +70,8 @@ for trial_i = 1:length(trial_ids),
   trials.(trial_id).ds_exclude_idx = false(size(trials.(trial_id).ds, 1), 1);
 end
 
-% Filter sweep trials to remove multi-3D-pose ambiguities
+% Filter rx & ry sweep trials to remove multi-3D-pose ambiguities ...
+% ... based on differences in sweep var
 for trial_i = 1:(length(trial_ids) - 1), % skip random
   feature_var = sweep_feature_vars{trial_i};
   if isempty(strfind(feature_var, 'rx')) && ...
@@ -94,16 +95,19 @@ for trial_i = 1:(length(trial_ids) - 1), % skip random
     trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
 end
 
-% Filter random trial to remove multi-3D-pose ambiguities
-trial_id = 'random';
-trial = trials.random;
+% Filter all trials to remove multi-3D-pose ambiguities ...
+% based on rxy differences
 if APPLY_FILTER,
-  parallel_edged_quad_seqds_idx = (trial.seqds.diff_rxy_deg >= RANDOM_RXY_MAX_DEG);
-  parallel_edged_quad_ds_idx = (trial.ds.diff_rxy_deg >= RANDOM_RXY_MAX_DEG);
-  trials.(trial_id).seqds_exclude_idx = ...
-    trials.(trial_id).seqds_exclude_idx | parallel_edged_quad_seqds_idx;
-  trials.(trial_id).ds_exclude_idx = ...
-    trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
+  for trial_i = 1:length(trial_ids),
+    trial_id = trial_ids{trial_i};
+    trial = trials.(trial_id);
+    parallel_edged_quad_seqds_idx = (trial.seqds.diff_rxy_deg >= RXY_MAX_DEG);
+    parallel_edged_quad_ds_idx = (trial.ds.diff_rxy_deg >= RXY_MAX_DEG);
+    trials.(trial_id).seqds_exclude_idx = ...
+      trials.(trial_id).seqds_exclude_idx | parallel_edged_quad_seqds_idx;
+    trials.(trial_id).ds_exclude_idx = ...
+      trials.(trial_id).ds_exclude_idx | parallel_edged_quad_ds_idx;
+  end
 end
 
 % Filter all trials to remove quads near image border, and payloads
@@ -419,12 +423,14 @@ end
 % Most visible outliers in signed phase error are caused by ray
 % undersampling, due to rounding & bilinear-interpolation inaccuracies
 
-for trial_i = 1:(length(trial_ids)-1), % skip random
+%for trial_i = 1:(length(trial_ids)-1), % skip random
+trial_i = 3,
   trial_id = trial_ids{trial_i};
   feature_var = sweep_feature_vars{trial_i};
   
   tds = trials.(trial_id).ds;
-  for filter_freq = 0:trials.(trial_id).tag_num_freqs, % 0 == only show first tag, s=1, f=1
+  %for filter_freq = 0:trials.(trial_id).tag_num_freqs, % 0 == only show first tag, s=1, f=1
+  for filter_freq = 5,
     % Filter observations
     if filter_freq == 0, % Isolate first seq_id, s=1, f=1
       % Find obs index corresponding to first large negative change
