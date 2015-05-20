@@ -1,5 +1,5 @@
 function [tag, phase_ids] = genFTag2Marker6S5F22111B(payload_bits, tagWidthPx)
-% per slice: 2 bits for 1Hz (LSB used for sig.), 2 bits for 2Hz, 1 bits for 3-5Hz, 6*6 bits total payload
+% per slice: 2 bits for 1Hz (LSB used for sig.), 2 bits for 2Hz, 1 bit for 3-5Hz, 6*6 bits total payload
 %
 % DEMO USAGE:
 %{

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style type="text/css">
+  body {background: #FFF; color: #000;}
+
+  div.canvas {top: 0; left: 0; width: 100%; height: 100%;
+    position: absolute; display: table; text-align: center;}
+
+  #tag_name {top: 0; left: 0; width: 100%; text-align: center; margin-top: 20px; z-index: 10; font-size: 30px;}
+
+  img.displayed {position: absolute;}
+</style>
+
+<meta charset="utf-8" />
+<script>
+  var POLL_DELAY_MS = 100;
+  var curr_image_path = " ";
+  
+  
+  function updateImage(size, rot, path) {
+    document.getElementById("img").src = "images/" + path;
+
+    var half_size = Math.floor(size/2);
+    document.getElementById("img").style.width = String(size) + "px";
+    document.getElementById("img").style.height = String(size) + "px";
+    document.getElementById("img").style.marginLeft = String(-half_size) + "px";
+    document.getElementById("img").style.marginTop = String(-half_size+9) + "px";
+    document.getElementById("img").style.left = "50%";
+    document.getElementById("img").style.top = "50%";
+        
+    if (rot != 0) {
+      document.getElementById("img").style.MozTransform = "rotate(" + rot + "deg)";
+      document.getElementById("img").style.webkitTransform = "rotate(" + rot + "deg)";
+    }
+  }
+
+
+  function pollServer(ack) {
+    // Obtain async request
+    var req = false;
+    try {
+      req = new XMLHttpRequest(); // Firefox, Opera 8.0+, Safari
+    } catch (e) {
+      try {
+        req = new ActiveXObject("Msxml2.XMLHTTP"); // Internet Explorer
+      } catch (e) {
+        try {
+          req = new ActiveXObject("Microsoft.XMLHTTP");
+        } catch (e) { 
+          alert("Your browser does not support AJAX!");
+          return false;
+        }
+      }
+    }
+    
+    if (ack === undefined) { // Poll for new image
+      req.open("POST", "poll", true); // POST asynchronously with URL=="poll"
+      req.onreadystatechange = function() {
+        if (req.readyState == 4) {
+          if (req.status == 200) {
+            handlePollResponse(req);
+          } else { // POST request failed, so stop polling
+            handlePollFailure(req);
+          }
+        }
+      };
+      req.onerror = function(e) {
+        document.getElementById('tag_name').innerHTML = 'Poll POST failed (server down?)';
+      };
+      req.send();
+      
+    } else { // Send acknowledgement of image loaded
+      req.open("POST", "ack", true); // POST asynchronously with URL=="ack"
+      req.onerror = function(e) {
+        document.getElementById('tag_name').innerHTML = 'Ack POST failed (server down?)';
+      };
+      // no need to handle server success/failure
+      req.send(ack);
+    }
+  };
+
+
+  function handlePollResponse(req) {
+    if (req.responseText.length > 0 && req.responseText != curr_image_path) { // server indicating new image to display
+      curr_image_path = req.responseText;
+      document.getElementById('tag_name').innerHTML = 'Img: ' + curr_image_path;
+      var maxTagSize = Math.min(window.screen.availWidth, window.screen.availHeight);
+      updateImage(maxTagSize*(0.632), 0, curr_image_path); // tag size: 7.2cm
+      // NOTE: do not poll again until image has loaded (see handleImgLoaded)
+      
+    } else { // server indicating no new images to display, so poll again
+      pollServer(curr_image_path); // send acknowledgement of current image, for redundancy
+      initDelayedPoll();
+    }
+  };
+
+
+  function handlePollFailure(req) {
+    document.getElementById('tag_name').innerHTML = 'Poll POST failed: ' + req.status;
+  };
+  
+  
+  function initDelayedPoll() {
+    setTimeout(pollServer, POLL_DELAY_MS);
+  };
+  
+  
+  function handleImgLoaded() {
+    pollServer(curr_image_path);
+    initDelayedPoll();
+  };
+</script>
+</head>
+
+<body onload="initDelayedPoll()">
+  <div class="canvas"><img id="img" class="displayed" onload="handleImgLoaded()"></div>
+  <div id="tag_name"></div>
+</body>
+</html>
