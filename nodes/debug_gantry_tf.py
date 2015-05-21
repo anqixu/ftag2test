@@ -3,6 +3,7 @@ import roslib
 roslib.load_manifest('ftag2test')
 import rospy
 import tf
+import gantry_tf as gtf
 import math
 import threading
 from std_msgs.msg import Float64MultiArray
@@ -10,7 +11,7 @@ from geometry_msgs.msg import PoseStamped
 
 
 
-radians = math.pi/180.0
+RADIANS = math.pi/180.0
 
 
 class GantryTF():
@@ -23,6 +24,7 @@ class GantryTF():
     self.tf_listener = tf.TransformListener()
     self.state_sub = rospy.Subscriber('/gantry_state', Float64MultiArray, self.handleState)
     self.pose_pub = rospy.Publisher('/gantry_pose', PoseStamped, queue_size=10)
+    self.pose2_pub = rospy.Publisher('/gantry_pose_manual', PoseStamped, queue_size=10)
     rospy.loginfo('gantry tf initialized')
 
 
@@ -46,19 +48,19 @@ class GantryTF():
       rospy.Time.now(),
       "wrist", "gantry")
     self.tf_broadcaster.sendTransform((0, 0, 0),
-      tf.transformations.quaternion_from_euler(0, 0, -state[3]*radians),
+      tf.transformations.quaternion_from_euler(0, 0, -state[3]*RADIANS),
       rospy.Time.now(),
       "wrist_twisted", "wrist")
     self.tf_broadcaster.sendTransform((0, 0, 0),
-      tf.transformations.quaternion_from_euler(0, state[4]*radians, 0),
+      tf.transformations.quaternion_from_euler(0, state[4]*RADIANS, 0),
       rospy.Time.now(),
       "hand", "wrist_twisted")
     self.tf_broadcaster.sendTransform((0, 0, -0.07672),
-      tf.transformations.quaternion_from_euler(0, 0, -state[5]*radians),
+      tf.transformations.quaternion_from_euler(0, 0, -state[5]*RADIANS),
       rospy.Time.now(),
       "flange", "hand")
     self.tf_broadcaster.sendTransform((0, 0, -0.035),
-      tf.transformations.quaternion_from_euler(0, 0, 135*radians),
+      tf.transformations.quaternion_from_euler(0, 0, 135*RADIANS),
       rospy.Time.now(),
       "tag", "flange")
       
@@ -75,18 +77,29 @@ class GantryTF():
       msg.pose.orientation.y = rot[1]
       msg.pose.orientation.z = rot[2]
       msg.pose.orientation.w = rot[3]
-      self.pose_pub.publish(pose)
+      self.pose_pub.publish(msg)
+      
+      (trans2, rot2) = gtf.pose_from_state(state)
+      msg.pose.position.x = trans2[0]
+      msg.pose.position.y = trans2[1]
+      msg.pose.position.z = trans2[2]
+      msg.pose.orientation.x = rot2[0]
+      msg.pose.orientation.y = rot2[1]
+      msg.pose.orientation.z = rot2[2]
+      msg.pose.orientation.w = rot2[3]
+      self.pose2_pub.publish(msg)
+      
     except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-      rospy.logerror('TF transformation exception')
-      continue
+      rospy.logerr('TF transformation exception')
+      pass
 
-    
+
   def spin(self):
     hz = rospy.Rate(100)
     while not rospy.is_shutdown():
       with self.state_mutex:
         state_idx = self.state_idx
-        state = state
+        state = self.state
       self.publishTF(state_idx, state)
       hz.sleep()
 
