@@ -1,4 +1,26 @@
 #! /usr/bin/env python
+
+'''
+HTTPImageServer: custom HTML image server with async client polling and acknowledgements
+
+EVENT FLOW: (u: end-user's ROS node; s: this ROS server node; c: browser client)
+
+c: connects to server at URL = '/' (GET)
+s: returns blank image template page
+c: continuously polls server (POST) for image to display
+
+u: publishes on ~set_image (path is relative to $(find ftag2test)/html/images)
+s: updates image path to be displayed; sets WAIT_FOR_ACK flag (and rejects further ~set_image requests till WAIT_FOR_ACK is unset)
+
+c: polls server (POST) for image to display; server returns image path
+c: upon confirming that image path is different from previous, sets <img>.src to new path
+c: implicitly requests image content (GET)
+c: upon <img>.onload, sends acknowledgement to server (POST); server unsets WAIT_FOR_ACK (and accepts new ~set_image requests)
+s: publishes current displayed image path on ~ack
+
+c: subsequent polls (POST) will not update image, but each will eventually generate a message on ~ack
+'''
+
 import rospy
 import roslib
 from std_msgs.msg import String
@@ -12,7 +34,7 @@ import BaseHTTPServer
 
 
 
-HOST_NAME = '192.168.43.117'
+HOST_NAME = ''
 PORT_NUMBER = 8888
 
 
