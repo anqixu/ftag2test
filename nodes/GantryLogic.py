@@ -45,9 +45,9 @@ maxNumTagsPerPose = 5
 maxNumDetections = 4
 
 DETECTION_TIMEOUT_DURATION = 0.1
-IMAGE_TIMEOUT_DURATION = 6.0
-WHITE_TIMEOUT_DURATION = 0.9
-TIME_WAIT_FOR_IMAGE_TO_LOAD = 1.0
+IMAGE_TIMEOUT_DURATION = 0.5
+WHITE_TIMEOUT_DURATION = 0.3
+TIME_WAIT_FOR_IMAGE_TO_LOAD = 0.01
 NUM_FAILURES_UNTIL_NEXT_TAG = 10
 NUM_FAILURES_UNTIL_NEXT_POSE = maxNumTagsPerPose / 3
 MAIN_THREAD_SLEEP_TIME = 0.01
@@ -314,31 +314,34 @@ class GantryServer:
             for i in range(len(pyr_corners)):
                 state = pyr_corners[i]
                 gantry_pose = self.transform_gantry_state_to_gantry_frame(state)
-                Q.append([ gantry_pose[0],  gantry_pose[1], gantry_pose[2] ])
+                Q.extend([ gantry_pose ])
 
             global N
 
             # Direction vectors for the lines
             u = np.matrix([
-                [ Q[0].position.x - Q[4].position.x,
-                            Q[0].position.y - Q[4].position.y,
-                                        Q[0].position.z - Q[4].position.z ],
-                [ Q[1].position.x - Q[5].position.x,
-                            Q[1].position.y - Q[5].position.y,
-                                        Q[1].position.z - Q[5].position.z ],
-                [ Q[2].position.x - Q[6].position.x,
-                            Q[2].position.y - Q[6].position.y,
-                                        Q[2].position.z - Q[6].position.z ],
-                [ Q[3].position.x - Q[7].position.x,
-                            Q[3].position.y - Q[7].position.y,
-                                        Q[3].position.z - Q[7].position.z ]
+                [ Q[0].pose.position.x - Q[4].pose.position.x,
+                            Q[0].pose.position.y - Q[4].pose.position.y,
+                                        Q[0].pose.position.z - Q[4].pose.position.z ],
+                [ Q[1].pose.position.x - Q[5].pose.position.x,
+                            Q[1].pose.position.y - Q[5].pose.position.y,
+                                        Q[1].pose.position.z - Q[5].pose.position.z ],
+                [ Q[2].pose.position.x - Q[6].pose.position.x,
+                            Q[2].pose.position.y - Q[6].pose.position.y,
+                                        Q[2].pose.position.z - Q[6].pose.position.z ],
+                [ Q[3].pose.position.x - Q[7].pose.position.x,
+                            Q[3].pose.position.y - Q[7].pose.position.y,
+                                        Q[3].pose.position.z - Q[7].pose.position.z ]
                 ])
+
+            print Q
 
             # Normalize direction vectors
             for j in range(len(u)):
                 norm = np.linalg.norm(u[j])
                 u[j] = u[j]/norm
 
+            print u
             # Compute pyramid vertex (intersection)
             pyr_vertex = self.compute_pyramid_vertex( Q, u )
 
@@ -479,8 +482,8 @@ class GantryServer:
         self.camera_info_pub = rospy.Publisher("/camera2/camera_info", CameraInfo, queue_size = 1)
         self.final_camera_info_pub = rospy.Publisher("/camera/camera_info", CameraInfo, queue_size = 1)
         self.failed_camera_info_pub = rospy.Publisher("/gantry/failed/camera_info", CameraInfo, queue_size = 1)
-        self.ack_sub = rospy.Subscriber('/GantryServer/ack', String, self.http_ack_cb, queue_size=10)
-        self.set_image_pub = rospy.Publisher('/GantryServer/set_image', String, queue_size=10)
+        self.ack_sub = rospy.Subscriber('/image_server/ack', String, self.http_ack_cb, queue_size=10)
+        self.set_image_pub = rospy.Publisher('/image_server/set_image', String, queue_size=10)
 
 
         # self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
@@ -552,15 +555,18 @@ class GantryServer:
             else:
                 c = getch()
             if c == 'x' or c == 'X':
-                print 'EXIT'
+                rospy.loginfo('EXIT')
                 self.alive = False
                 # self.gantry.suicide()
                 # rospy.signal_shutdown('User pressed X')
             elif c == 'm' or c == 'M':
                 self.MOVING = False
-            elif c == 'r' or c == 'R':
-                self.FINISHED_ROTATING = True
-                self.MOVING = False
+            elif c == 'i' or c == 'I':
+                rospy.loginfo('GOT IMAGE')
+                self.fsm = State.AWAITING_DETECTION
+            elif c == 'd' or c == 'D':
+                rospy.loginfo('GOT DETECTION')
+                self.fsm = State.WAIT_SHOWING_TAGS
             elif c == ' ':
                 if self.paused:
                     self.paused = False
@@ -683,15 +689,12 @@ class GantryServer:
 
 
     def http_ack_cb(self, msg):
-        rospy.loginfo('ACK: %s', msg)
-        if self.tagImage == msg or not self.alive:
+        if self.tagImage == msg.data or not self.alive:
             self.http_ack = True
-            rospy.loginfo('ACK = true')
 
 
     def spin(self):
         while self.alive:
-            rospy.loginfo('ALIVE')
             # print '\rNum ', self.num_positions
             # print '\rNum detections', self.num_detections
             # print '\rNum images total', self.total_image_count
@@ -700,10 +703,8 @@ class GantryServer:
             #           rospy.sleep(0.01)
             if self.paused or self.fsm == State.IDLE or self.fsm == State.WAIT_SHOWING_WHITE:
                 time.sleep(MAIN_THREAD_SLEEP_TIME)
-                rospy.loginfo('PAUSED')
 
             elif self.alive and self.fsm == State.WAIT_SHOWING_TAGS:
-                rospy.loginfo('WAIT SHOWING TAGS')
                 self.mutex_moving.acquire()
                 moving = self.MOVING
                 self.mutex_moving.release()
@@ -852,26 +853,19 @@ class GantryServer:
                 state_msg.tag_payload = self.last_payload
                 self.state_pub.publish(state_msg)
 
-                rospy.loginfo('Published gantry state   ')
-
                 global TIME_WAIT_FOR_IMAGE_TO_LOAD
                 self.http_ack = False
                 while not self.http_ack and self.alive:
-                    rospy.loginfo('NOT ACK')
                     self.set_image_pub.publish(self.tagImage)
                     time.sleep(TIME_WAIT_FOR_IMAGE_TO_LOAD)
 
-                rospy.loginfo('GOT ACK')
                 global IMAGE_TIMEOUT_DURATION
                 time.sleep(IMAGE_TIMEOUT_DURATION)
-
-                rospy.loginfo('Slept')
 
                 self.total_image_count += 1
                 self.tag_count_in_pose += 1
 
                 self.fsm = State.WAIT_SHOWING_TAGS
-                rospy.loginfo('WAIT_SHOWING_TAGS')
 
                 ##############################################################################
                 ##############################################################################
