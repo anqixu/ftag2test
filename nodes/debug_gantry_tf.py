@@ -3,14 +3,15 @@ import roslib
 roslib.load_manifest('ftag2test')
 import rospy
 import tf
+import gantry_tf as gtf
 import math
 import threading
 from std_msgs.msg import Float64MultiArray
 from geometry_msgs.msg import PoseStamped
 
 
-
-radians = math.pi/180.0
+RADIANS = math.pi/180.0
+TAG_SIZE_M = 0.1 # for testing
 
 
 class GantryTF():
@@ -46,21 +47,37 @@ class GantryTF():
       rospy.Time.now(),
       "wrist", "gantry")
     self.tf_broadcaster.sendTransform((0, 0, 0),
-      tf.transformations.quaternion_from_euler(0, 0, -state[3]*radians),
+      tf.transformations.quaternion_from_euler(0, 0, -state[3]*RADIANS),
       rospy.Time.now(),
       "wrist_twisted", "wrist")
     self.tf_broadcaster.sendTransform((0, 0, 0),
-      tf.transformations.quaternion_from_euler(0, state[4]*radians, 0),
+      tf.transformations.quaternion_from_euler(0, state[4]*RADIANS, 0),
       rospy.Time.now(),
       "hand", "wrist_twisted")
     self.tf_broadcaster.sendTransform((0, 0, -0.07672),
-      tf.transformations.quaternion_from_euler(0, 0, -state[5]*radians),
+      tf.transformations.quaternion_from_euler(0, 0, -state[5]*RADIANS),
       rospy.Time.now(),
       "flange", "hand")
     self.tf_broadcaster.sendTransform((0, 0, -0.035),
-      tf.transformations.quaternion_from_euler(0, 0, 135*radians),
+      tf.transformations.quaternion_from_euler(0, 0, 135*RADIANS),
       rospy.Time.now(),
       "tag", "flange")
+    self.tf_broadcaster.sendTransform((-TAG_SIZE_M/2, -TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_top_left", "tag")
+    self.tf_broadcaster.sendTransform((-TAG_SIZE_M/2, TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_bottom_left", "tag")
+    self.tf_broadcaster.sendTransform((TAG_SIZE_M/2, TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_bottom_right", "tag")
+    self.tf_broadcaster.sendTransform((TAG_SIZE_M/2, -TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_top_right", "tag")
       
     try:
       msg = PoseStamped()
@@ -75,18 +92,19 @@ class GantryTF():
       msg.pose.orientation.y = rot[1]
       msg.pose.orientation.z = rot[2]
       msg.pose.orientation.w = rot[3]
-      self.pose_pub.publish(pose)
+      self.pose_pub.publish(msg)
+      
     except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-      rospy.logerror('TF transformation exception')
-      continue
+      rospy.logerr('TF transformation exception')
+      pass
 
-    
+
   def spin(self):
-    hz = rospy.Rate(100)
+    hz = rospy.Rate(50)
     while not rospy.is_shutdown():
       with self.state_mutex:
         state_idx = self.state_idx
-        state = state
+        state = self.state
       self.publishTF(state_idx, state)
       hz.sleep()
 
