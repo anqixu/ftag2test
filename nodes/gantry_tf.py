@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import sys
 import math
+import numpy as np
 import tf.transformations as tft
 
 
@@ -40,11 +41,43 @@ def pose_from_state(state):
   Txyz = tft.translation_from_matrix(M_tag_from_gantry)
   Qxyzw = tft.quaternion_from_matrix(M_tag_from_gantry)
   return (Txyz, Qxyzw)
+
+
+# Returns 4-tuple (T_top_left, T_bottom_left, T_bottom_right, T_top_right) of
+# 1x3 vectors T_i = (tx_i, ty_i, tz_i), corresponding to the positions of
+# the 4 tag corners, in gantry's frame
+def tag_corner_poses_from_state(state, tag_width_m):
+  tag_half_width_m = tag_width_m/2.0
+  
+  M_tag_from_gantry = M_from_state(state)
+  
+  # NOTE: tag frame's conventions are as follows:
+  # +x = right of image
+  # +y = bottom of image
+  # +z = into image (following right-handed coordinate frame)
+  T = M_tag_from_gantry.dot([-tag_half_width_m, -tag_half_width_m, 0, 1])
+  T_top_left = (T[:3]/T[3])
+  
+  T = M_tag_from_gantry.dot([-tag_half_width_m, tag_half_width_m, 0, 1])
+  T_bottom_left = (T[:3]/T[3])
+  
+  T = M_tag_from_gantry.dot([tag_half_width_m, tag_half_width_m, 0, 1])
+  T_bottom_right = (T[:3]/T[3])
+  
+  T = M_tag_from_gantry.dot([tag_half_width_m, -tag_half_width_m, 0, 1])
+  T_top_right = (T[:3]/T[3])
+  
+  return (T_top_left, T_bottom_left, T_bottom_right, T_top_right)
   
 
+# Test logic
 if __name__ == '__main__':
   if len(sys.argv) != 7:
     print 'Usage: %s <tx> <ty> <tz> <wrist_roll> <wrist_pivot> <flange_roll>'
     sys.exit(0)
   
-  print pose_from_state([float(num) for num in sys.argv[1:]])
+  state = [float(num) for num in sys.argv[1:]]
+  #print M_from_state(state)
+  #print position_from_state(state)
+  #print pose_from_state(state)
+  print tag_corner_poses_from_state(state, 0.1)

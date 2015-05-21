@@ -10,8 +10,8 @@ from std_msgs.msg import Float64MultiArray
 from geometry_msgs.msg import PoseStamped
 
 
-
 RADIANS = math.pi/180.0
+TAG_SIZE_M = 0.1 # for testing
 
 
 class GantryTF():
@@ -24,7 +24,6 @@ class GantryTF():
     self.tf_listener = tf.TransformListener()
     self.state_sub = rospy.Subscriber('/gantry_state', Float64MultiArray, self.handleState)
     self.pose_pub = rospy.Publisher('/gantry_pose', PoseStamped, queue_size=10)
-    self.pose2_pub = rospy.Publisher('/gantry_pose_manual', PoseStamped, queue_size=10)
     rospy.loginfo('gantry tf initialized')
 
 
@@ -63,6 +62,22 @@ class GantryTF():
       tf.transformations.quaternion_from_euler(0, 0, 135*RADIANS),
       rospy.Time.now(),
       "tag", "flange")
+    self.tf_broadcaster.sendTransform((-TAG_SIZE_M/2, -TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_top_left", "tag")
+    self.tf_broadcaster.sendTransform((-TAG_SIZE_M/2, TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_bottom_left", "tag")
+    self.tf_broadcaster.sendTransform((TAG_SIZE_M/2, TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_bottom_right", "tag")
+    self.tf_broadcaster.sendTransform((TAG_SIZE_M/2, -TAG_SIZE_M/2, 0),
+      tf.transformations.quaternion_from_euler(0, 0, 0),
+      rospy.Time.now(),
+      "tag_top_right", "tag")
       
     try:
       msg = PoseStamped()
@@ -79,23 +94,13 @@ class GantryTF():
       msg.pose.orientation.w = rot[3]
       self.pose_pub.publish(msg)
       
-      (trans2, rot2) = gtf.pose_from_state(state)
-      msg.pose.position.x = trans2[0]
-      msg.pose.position.y = trans2[1]
-      msg.pose.position.z = trans2[2]
-      msg.pose.orientation.x = rot2[0]
-      msg.pose.orientation.y = rot2[1]
-      msg.pose.orientation.z = rot2[2]
-      msg.pose.orientation.w = rot2[3]
-      self.pose2_pub.publish(msg)
-      
     except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
       rospy.logerr('TF transformation exception')
       pass
 
 
   def spin(self):
-    hz = rospy.Rate(100)
+    hz = rospy.Rate(50)
     while not rospy.is_shutdown():
       with self.state_mutex:
         state_idx = self.state_idx
