@@ -7,6 +7,8 @@ from geometry_msgs.msg import PoseStamped, PointStamped
 from ftag2_core.msg import TagDetection, TagDetections
 from sensor_msgs.msg import Image, CameraInfo
 
+import gantry_tf as gtf
+
 import tf
 import random
 import os
@@ -37,9 +39,14 @@ PORT_NUMBER = 8888
 
 tag_width = 0.072
 N = 4
-z_focal_plane = 0.05
-min_proj_tag_width = 0.05
+z_focal_plane = 0.0
+min_proj_tag_width = 0.0065
 radians = math.pi/180.0
+num_sample_points = 10000
+close_enough_distance = 0.1
+sampling_jump_prob = 0.05
+min_z = 0.2
+max_z = 0.8
 
 maxNumTagsPerPose = 5
 maxNumDetections = 4
@@ -165,99 +172,32 @@ class GantryServer:
         for i in xrange(0, len(l), n):
             yield l[i:i+n]
 
-    def linear_approx(self, z_new, Q, u):
+
+    # def linear_approx(self, z_new, Q, u):
+    #     pyr_xy_borders = []
+    #     # Solve the vector equations for the new z
+    #     for i in range(N):
+    #         t = (z_new - Q[0,2]) / u[0,2]
+    #         x = Q[0,0] + t*u[0,0]
+    #         y = Q[0,1] + t*u[0,1]
+    #         pyr_xy_borders.append([x,y,z_new])
+    #     return pyr_xy_borders
+
+
+    def linear_approx(self, z_new, pyr_corners):
         pyr_xy_borders = []
-        # Solve the vector equations for the new z
-        for i in range(N):
-            t = (z_new - Q[0][2]) / u[0,2]
-            x = Q[0][0] + t*u[0,0]
-            y = Q[0][1] + t*u[0,1]
-            pyr_xy_borders.append([x,y,z_new])
+        levels = list(self.chunks(pyr_corners, 4))
+        for cor in range(0,4):
+            z1 = levels[0][0][2]
+            z2 = levels[1][0][2]
+            l1x = levels[0][cor][0]
+            l2x = levels[1][cor][0]
+            l1y = levels[0][cor][1]
+            l2y = levels[1][cor][1]
+            l_new_x = l1x + (l2x-l1x) * (z_new-z1)/(z2-z1)
+            l_new_y = l1y + (l2y-l1y) * (z_new-z1)/(z2-z1)
+            pyr_xy_borders.append([l_new_x, l_new_y, z_new])
         return pyr_xy_borders
-
-
-    def transform_gantry_state_to_gantry_frame(self, state):
-        global radians
-        self.tf_broadcaster.sendTransform((-1.15, -1.15, 0.3),
-            tf.transformations.quaternion_from_euler(0, 0, 0),
-            rospy.Time.now(),
-            "gantry", "world")
-        self.tf_broadcaster.sendTransform((state[0], state[1], state[2]),
-            tf.transformations.quaternion_from_euler(0, 0, 0),
-            rospy.Time.now(),
-            "wrist", "gantry")
-        self.tf_broadcaster.sendTransform((0, 0, 0),
-            tf.transformations.quaternion_from_euler(0, 0, -state[3]*radians),
-            rospy.Time.now(),
-            "wrist_twisted", "wrist")
-        self.tf_broadcaster.sendTransform((0, 0, 0),
-            tf.transformations.quaternion_from_euler(0, state[4]*radians, 0),
-            rospy.Time.now(),
-            "hand", "wrist_twisted")
-        self.tf_broadcaster.sendTransform((0, 0, -0.07672),
-            tf.transformations.quaternion_from_euler(0, 0, -state[5]*radians),
-            rospy.Time.now(),
-            "flange", "hand")
-        self.tf_broadcaster.sendTransform((0, 0, -0.035),
-            tf.transformations.quaternion_from_euler(0, 0, 135*radians),
-            rospy.Time.now(),
-            "tag", "flange")
-        try:
-            msg = PoseStamped()
-            msg.header.seq = 1
-            msg.header.stamp = rospy.Time.now()
-            msg.header.frame_id = 'tag'
-            (trans, rot) = self.tf_listener.lookupTransform("gantry", "tag", rospy.Time(0))
-            gantry_pose = []
-            gantry_pose.extend(trans)
-            gantry_pose.extend(rot)
-            return gantry_pose
-
-        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-            rospy.loginfo('TF transformation exception')
-
-    def transform_tag_corners_to_gantry_frame(self, state):
-        # Get tag corner poses in gantry frame
-        global radians
-        self.tf_broadcaster.sendTransform((-1.15, -1.15, 0.3),
-            tf.transformations.quaternion_from_euler(0, 0, 0),
-            rospy.Time.now(),
-            "gantry", "world")
-        self.tf_broadcaster.sendTransform((state[0], state[1], state[2]),
-            tf.transformations.quaternion_from_euler(0, 0, 0),
-            rospy.Time.now(),
-            "wrist", "gantry")
-        self.tf_broadcaster.sendTransform((0, 0, 0),
-            tf.transformations.quaternion_from_euler(0, 0, -state[3]*radians),
-            rospy.Time.now(),
-            "wrist_twisted", "wrist")
-        self.tf_broadcaster.sendTransform((0, 0, 0),
-            tf.transformations.quaternion_from_euler(0, state[4]*radians, 0),
-            rospy.Time.now(),
-            "hand", "wrist_twisted")
-        self.tf_broadcaster.sendTransform((0, 0, -0.07672),
-            tf.transformations.quaternion_from_euler(0, 0, -state[5]*radians),
-            rospy.Time.now(),
-            "flange", "hand")
-        self.tf_broadcaster.sendTransform((0, 0, -0.035),
-            tf.transformations.quaternion_from_euler(0, 0, 135*radians),
-            rospy.Time.now(),
-            "tag", "flange")
-
-        global tag_width
-        tag_corners_in_gantry = []
-        for i in range(N):
-            bits = format(i, '02b')
-            tag_corner = PointStamped()
-            tag_corner.header.frame_id = "tag";
-            tag_corner.header.stamp = rospy.Time.now()
-            tag_corner.point.x = (-1)**int(bits[0]) * tag_width/2.0
-            tag_corner.point.y = (-1)**int(bits[1]) * tag_width/2.0
-            tag_corner.point.z = 0.0;
-            tag_corner_in_gantry = self.tf_listener.transformPoint("gantry", tag_corner);
-            tag_corners_in_gantry.extend([tag_corner_in_gantry])
-
-        return tag_corners_in_gantry
 
 
     def compute_pyramid_vertex(self, Q, u):
@@ -270,22 +210,25 @@ class GantryServer:
         a20 = -1.0 * sum( (u[i,2]*u[i,0]) for i in range(N) )
         a21 = -1.0 * sum( (u[i,2]*u[i,1]) for i in range(N) )
         a22 = sum( (1 - u[i,2]**2) for i in range(N) )
+        A = np.array(( (a00, a01, a02),
+                       (a10, a11, a12),
+                       (a20, a21, a22) ))
 
-        A = np.matrix( (a00, a01, a02), (a10, a11, a12), (a20, a21, a22) )
-
-        b0 = sum( (1-u[i,0]**2)*Q[i].position.x
-            - u[i,0]*u[i,1]*Q[i].position.y
-            - u[i,0]*u[i,2]*Q[i].position.z for i in range(N) )
-        b1 = sum( (1-u[i,1]**2)*Q[i].position.y
-            - u[i,0]*u[i,1]*Q[i].position.x
-            - u[i,1]*u[i,2]*Q[i].position.z for i in range(N) )
-        b2 = sum( (1-u[i,2]**2)*Q[i].position.z
-            - u[i,0]*u[i,2]*Q[i].position.x
-            - u[i,1]*u[i,2]*Q[i].position.y for i in range(N) )
-        B = np.matrix( b0, b1, b2 )
+        b0 = sum( (1-u[i,0]**2)*Q[i,0]
+                - u[i,0]*u[i,1]*Q[i,1]
+                    - u[i,0]*u[i,2]*Q[i,2] for i in range(N) )
+        b1 = sum( (1-u[i,1]**2)*Q[i,1]
+                - u[i,0]*u[i,1]*Q[i,0]
+                    - u[i,1]*u[i,2]*Q[i,2] for i in range(N) )
+        b2 = sum( (1-u[i,2]**2)*Q[i,2]
+                - u[i,0]*u[i,2]*Q[i,0]
+                    - u[i,1]*u[i,2]*Q[i,1] for i in range(N) )
+        B = np.array( (b0, b1, b2) )
+        B.shape = (3,1)
 
         # Intersection
         pyr_vertex = np.linalg.solve(A,B)
+        pyr_vertex.shape = (3)
         return pyr_vertex
 
 
@@ -295,16 +238,12 @@ class GantryServer:
         self.tf_broadcaster = tf.TransformBroadcaster()
         self.tf_listener = tf.TransformListener()
         try:
-            infile = open( "gantry_random_sample_sequence.p", "rb" )
+            infile = open( "gantry_random_sample_sequence_.p", "rb" )
         except IOError:
             print 'Could not find random sample sequence file. Generating a new sequence...'
             self.PositionGrid = []
             listxyz = []
-            listx = []
-            listy = []
-            listz = []
             listrpy = []
-            sorted_list = []
 
             infile = open( "calib.p", "rb" )
             pyr_corners = pickle.load(infile)
@@ -313,48 +252,28 @@ class GantryServer:
             Q = []
             for i in range(len(pyr_corners)):
                 state = pyr_corners[i]
-                gantry_pose = self.transform_gantry_state_to_gantry_frame(state)
-                Q.extend([ gantry_pose ])
-
-            global N
+                gantry_pose = gtf.position_from_state(state)
+                gantry_pose.shape = (1,3)
+                Q.append( gantry_pose )
 
             # Direction vectors for the lines
-            u = np.matrix([
-                [ Q[0].pose.position.x - Q[4].pose.position.x,
-                            Q[0].pose.position.y - Q[4].pose.position.y,
-                                        Q[0].pose.position.z - Q[4].pose.position.z ],
-                [ Q[1].pose.position.x - Q[5].pose.position.x,
-                            Q[1].pose.position.y - Q[5].pose.position.y,
-                                        Q[1].pose.position.z - Q[5].pose.position.z ],
-                [ Q[2].pose.position.x - Q[6].pose.position.x,
-                            Q[2].pose.position.y - Q[6].pose.position.y,
-                                        Q[2].pose.position.z - Q[6].pose.position.z ],
-                [ Q[3].pose.position.x - Q[7].pose.position.x,
-                            Q[3].pose.position.y - Q[7].pose.position.y,
-                                        Q[3].pose.position.z - Q[7].pose.position.z ]
-                ])
-
-            print Q
+            u = np.concatenate( ( Q[0] - Q[4], Q[1] - Q[5], Q[2] - Q[6], Q[3] - Q[7] ) )
+            Q = np.concatenate(Q)
 
             # Normalize direction vectors
             for j in range(len(u)):
                 norm = np.linalg.norm(u[j])
                 u[j] = u[j]/norm
 
-            print u
             # Compute pyramid vertex (intersection)
             pyr_vertex = self.compute_pyramid_vertex( Q, u )
 
-            min_z = 0.0
-            max_z = 0.8
-
-            num_xyz_points = 10000
             cont_rand = 0
-            for i in range(num_xyz_points):
+            for i in range(num_sample_points):
                 z_new = random.uniform(min_z, max_z)
-                #print 'z: ', z_new
 
-                pyr_xy_borders = self.linear_approx(z_new, Q, u)
+                pyr_xy_borders = self.linear_approx(z_new, pyr_corners)
+
                 min_x = pyr_xy_borders[0][0]
                 max_x = pyr_xy_borders[0][0]
                 min_y = pyr_xy_borders[0][1]
@@ -370,57 +289,46 @@ class GantryServer:
                     if corner[1] > max_y:
                         max_y = corner[1]
 
-                # TODO: change this while
-                flag = True
-                while flag:
+                found_valid_pose = False
+                while not found_valid_pose:
                     # generate the random pose
                     x_rnd = random.uniform(min_x, max_x)
                     y_rnd = random.uniform(min_y, max_y)
                     roll_rnd = random.uniform(-360.0, 0.0)
                     pitch_rnd = random.uniform( 0.0, 60.0)
                     yaw_rnd = random.uniform(0.0 , 360.0)
+                    # TODO: if the arm ever pitches more than 90deg we have to check for couter-clockwise projection
+
                     state = [ x_rnd, y_rnd, z_new, roll_rnd, pitch_rnd, yaw_rnd]
+                    tag_corners_in_gantry = gtf.tag_corner_poses_from_state(state, tag_width)
 
-                    tag_corners_in_gantry = self.transform_tag_corners_to_gantry_frame(state)
+                    # Project corner to a z = z_focal_plane height plane
                     proj_tag_corners = []
-                    # Project corner to a z = 0.2 height plane
                     for k in range(4):
-                        t = (tag_corners_in_gantry[k].point.z - pyr_vertex[2,0]) / (z_focal_plane - intersection[2,0])
-                        x_p = pyr_vertex[0,0] + t*(tag_corners_in_gantry[k].point.x - pyr_vertex[0,0])
-                        y_p = pyr_vertex[1,0] + t*(tag_corners_in_gantry[k].point.y - pyr_vertex[1,0])
-                        proj_tag_corners.append([x_p, y_p, z_new])
+                        t = ( z_focal_plane - pyr_vertex[2] ) / (tag_corners_in_gantry[k][2] - pyr_vertex[2])
+                        x_p = pyr_vertex[0] + t*(tag_corners_in_gantry[k][0] - pyr_vertex[0])
+                        y_p = pyr_vertex[1] + t*(tag_corners_in_gantry[k][1] - pyr_vertex[1])
+                        proj_tag_corners.append([x_p, y_p, z_focal_plane])
 
-                    global min_proj_tag_width
                     for l in range(4):
-                        if  abs( proj_tag_corners[l][0] - proj_tag_corners[(l+1)%4][0]) > min_proj_tag_width:
-                            flag = False
-                        if  abs( proj_tag_corners[l][1] - proj_tag_corners[(l+1)%4][1]) > min_proj_tag_width:
-                            flag = False
-                    #if i == 0:
-                    #    listx.append(1.15/2)
-                    #    listy.append(1.15/2)
-                    #    listz.append(0.3)
+                        side = math.sqrt( (proj_tag_corners[l][0] - proj_tag_corners[(l+1)%4][0])**2 + ( proj_tag_corners[l][1] - proj_tag_corners[(l+1)%4][1])**2 )
+                        if side > min_proj_tag_width:
+                            found_valid_pose = True
 
-                listx.append(random.uniform(min_x, max_x))
-                listy.append(random.uniform(min_y, max_y))
-                listz.append(z_new)
-                listrpy.append([roll_rnd, pitch_rnd, yaw_rnd])
+                listxyz.append((x_rnd, y_rnd, z_new))
+                listrpy.append((roll_rnd, pitch_rnd, yaw_rnd))
 
-            listxyz = zip(listx,listy,listz)
             last = listxyz.pop(0)
             last_orient = listrpy.pop(0)
-            sorted_list = [[last[0], last[1], last[2]], last_orient[0], last_orient[1], last_orient[2]]
+            sorted_list = [(last[0], last[1], last[2], last_orient[0], last_orient[1], last_orient[2])]
             cont = 0
             while len(listxyz) > 0:
-                cont += 1
-                if cont % 100 == 0:
-                    print 'Cont = ', cont
                 i = 0
-                mind = 99999
+                mind = float('inf')
                 min_idx = None
                 for current in listxyz:
                     d = dist( current, last )
-                    if d < 0.2 :
+                    if d < close_enough_distance:
                         new_min = current
                         min_idx = i
                         break
@@ -430,17 +338,19 @@ class GantryServer:
                         min_idx = i
                     i += 1
 
-                if random.uniform(0,1) > 0.9:
+                if random.uniform(0,1) < sampling_jump_prob:
                     min_idx = random.randrange(len(listxyz))
                     new_min = listxyz[min_idx]
-                    print 'New random min: ', min_idx, ' -> ', new_min
                     cont_rand += 1
 
-                sorted_list.append([new_min[0], new_min[1], new_min[2], listrpy[min_idx][0], listrpy[min_idx][1], listrpy[min_idx][2]])
+                sorted_list.append((new_min[0], new_min[1], new_min[2], listrpy[min_idx][0], listrpy[min_idx][1], listrpy[min_idx][2]))
                 last = listxyz.pop(min_idx)
                 listrpy.pop(min_idx)
 
             self.PositionGrid = sorted_list
+            gantry_samples_list = np.concatenate( [ gtf.position_from_state(state) for state in sorted_list ] )
+            outFile = open( "gantry_random_sample_sequence_gantry_frame.p", "wb" )
+            pickle.dump(gantry_samples_list, outFile)
 
             outFile = open( "gantry_random_sample_sequence.p", "wb" )
             print 'file open'
@@ -448,14 +358,13 @@ class GantryServer:
             print 'pickle dumped'
             outFile.close()
 
-            print 'Num. rands: ', cont_rand
+            print 'Num. rand. jumps: ', cont_rand
 
         else:
             print 'Found random sample sequence file, loading...'
             self.PositionGrid = pickle.load(infile)
             infile.close()
 
-        # self.PositionGrid = [ [0, 0, 0] ]
         print 'Num. points: ', len(self.PositionGrid)
         print 'file closed'
 
@@ -468,7 +377,6 @@ class GantryServer:
         self.mutex_moving.acquire()
         self.MOVING = True
         self.mutex_moving.release()
-
 
         self.state_pub = rospy.Publisher('/gantry/controller_state', ControllerState, queue_size=10)
         self.gantry_state_pub = rospy.Publisher('/gantry/gantry_state', Float64MultiArray, queue_size=10)
@@ -557,8 +465,6 @@ class GantryServer:
             if c == 'x' or c == 'X':
                 rospy.loginfo('EXIT')
                 self.alive = False
-                # self.gantry.suicide()
-                # rospy.signal_shutdown('User pressed X')
             elif c == 'm' or c == 'M':
                 self.MOVING = False
             elif c == 'i' or c == 'I':
@@ -580,7 +486,6 @@ class GantryServer:
 
     def gantryStopped(self):
         moved = False
-
         #     print '\n\rOld pose = (', self.old_pose, ') \t New_pose = (', self.new_pose;
         self.mutex_new_pose.acquire()
         for (a,b) in zip(self.old_pose, self.new_pose):
