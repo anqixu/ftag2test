@@ -6,8 +6,9 @@ from std_msgs.msg import String, Float64MultiArray, MultiArrayDimension
 from geometry_msgs.msg import PoseStamped, PointStamped
 from ftag2_core.msg import TagDetection, TagDetections
 from sensor_msgs.msg import Image, CameraInfo
-
+from shapely.geometry import Polygon, Point
 import gantry_tf as gtf
+import scipy.io
 
 import tf
 import random
@@ -21,13 +22,8 @@ import math
 import time
 import numpy as np
 import pickle
-
 from threading import Lock
-
 from GantryController import *
-
-HOST_NAME = ''
-PORT_NUMBER = 8888
 
 # Ranges on gantry robot:
 # x_m: 0 - 1.15 (positive = move towards croquette)
@@ -44,9 +40,14 @@ min_proj_tag_width = 0.0065
 radians = math.pi/180.0
 num_sample_points = 10000
 close_enough_distance = 0.1
-sampling_jump_prob = 0.05
-min_z = 0.2
-max_z = 0.8
+# sampling_jump_prob = 0.05
+sampling_jump_prob = 0.99
+MIN_x = 0.0
+MAX_x = 1.15
+MIN_y = 0.0
+MAX_y = 1.15
+MIN_z = 0.2
+MAX_z = 0.8
 
 maxNumTagsPerPose = 5
 maxNumDetections = 4
@@ -238,7 +239,7 @@ class GantryServer:
         self.tf_broadcaster = tf.TransformBroadcaster()
         self.tf_listener = tf.TransformListener()
         try:
-            infile = open( "gantry_random_sample_sequence_.p", "rb" )
+            infile = open( "gantry_random_sample_sequence.p", "rb" )
         except IOError:
             print 'Could not find random sample sequence file. Generating a new sequence...'
             self.PositionGrid = []
@@ -268,38 +269,57 @@ class GantryServer:
             # Compute pyramid vertex (intersection)
             pyr_vertex = self.compute_pyramid_vertex( Q, u )
 
+            # Compute truncated z = z_focal_plane height plane
+            focal_plane_corners = []
+            for k in range(4):
+                t = ( z_focal_plane - pyr_vertex[2] ) / (Q[k+4,2] - pyr_vertex[2])
+                x_p = pyr_vertex[0] + t*(Q[k+4,0] - pyr_vertex[0])
+                y_p = pyr_vertex[1] + t*(Q[k+4,1] - pyr_vertex[1])
+                focal_plane_corners.append([x_p, y_p, z_focal_plane])
+            poly_focal_plane = Polygon(( (focal_plane_corners[0][0],focal_plane_corners[0][1]),
+                                       (focal_plane_corners[1][0],focal_plane_corners[1][1]),
+                                       (focal_plane_corners[2][0],focal_plane_corners[2][1]),
+                                       (focal_plane_corners[3][0],focal_plane_corners[3][1]) ))
+            proj_tag_corners_list = []
+
             cont_rand = 0
             for i in range(num_sample_points):
-                z_new = random.uniform(min_z, max_z)
-
-                pyr_xy_borders = self.linear_approx(z_new, pyr_corners)
-
-                min_x = pyr_xy_borders[0][0]
-                max_x = pyr_xy_borders[0][0]
-                min_y = pyr_xy_borders[0][1]
-                max_y = pyr_xy_borders[0][1]
-
-                for corner in pyr_xy_borders:
-                    if corner[0] < min_x:
-                        min_x = corner[0]
-                    if corner[0] > max_x:
-                        max_x = corner[0]
-                    if corner[1] < min_y:
-                        min_y = corner[1]
-                    if corner[1] > max_y:
-                        max_y = corner[1]
-
+                # TODO: Check if all corners are inside the trucated projection plane
                 found_valid_pose = False
+                j = 0
                 while not found_valid_pose:
+                    found_valid_pose = True
+                    j+=1
+                    if j == 2:
+                        break
                     # generate the random pose
-                    x_rnd = random.uniform(min_x, max_x)
-                    y_rnd = random.uniform(min_y, max_y)
+                    x_rnd = random.uniform(MIN_x, MAX_x)
+                    y_rnd = random.uniform(MIN_y, MAX_y)
+                    z_new = random.uniform(MIN_z, MAX_z)
                     roll_rnd = random.uniform(-360.0, 0.0)
-                    pitch_rnd = random.uniform( 0.0, 60.0)
-                    yaw_rnd = random.uniform(0.0 , 360.0)
+                    pitch_rnd = random.uniform(0.0, 60.0)
+                    yaw_rnd = random.uniform(0.0, 360.0)
+
+                    # pyr_xy_borders = self.linear_approx(z_new, pyr_corners)
+                    #
+                    # min_x = pyr_xy_borders[0][0]
+                    # max_x = pyr_xy_borders[0][0]
+                    # min_y = pyr_xy_borders[0][1]
+                    # max_y = pyr_xy_borders[0][1]
+                    #
+                    # for border_point in pyr_xy_borders:
+                    #     if border_point[0] < min_x:
+                    #         min_x = border_point[0]
+                    #     if border_point[0] > max_x:
+                    #         max_x = border_point[0]
+                    #     if border_point[1] < min_y:
+                    #         min_y = border_point[1]
+                    #     if border_point[1] > max_y:
+                    #         max_y = border_point[1]
+
                     # TODO: if the arm ever pitches more than 90deg we have to check for couter-clockwise projection
 
-                    state = [ x_rnd, y_rnd, z_new, roll_rnd, pitch_rnd, yaw_rnd]
+                    state = [ x_rnd, y_rnd, z_new, roll_rnd, pitch_rnd, yaw_rnd ]
                     tag_corners_in_gantry = gtf.tag_corner_poses_from_state(state, tag_width)
 
                     # Project corner to a z = z_focal_plane height plane
@@ -312,8 +332,19 @@ class GantryServer:
 
                     for l in range(4):
                         side = math.sqrt( (proj_tag_corners[l][0] - proj_tag_corners[(l+1)%4][0])**2 + ( proj_tag_corners[l][1] - proj_tag_corners[(l+1)%4][1])**2 )
-                        if side > min_proj_tag_width:
-                            found_valid_pose = True
+                        if side < min_proj_tag_width:
+                            found_valid_pose = False
+
+                    poly_tag_proj = Polygon(( (proj_tag_corners[0][0],proj_tag_corners[0][1]),
+                                               (proj_tag_corners[1][0],proj_tag_corners[1][1]),
+                                               (proj_tag_corners[2][0],proj_tag_corners[2][1]),
+                                               (proj_tag_corners[3][0],proj_tag_corners[3][1]) ))
+
+                    if not poly_focal_plane.contains(poly_tag_proj):
+                        found_valid_pose = False
+
+                    if found_valid_pose:
+                        proj_tag_corners_list.append(proj_tag_corners)
 
                 listxyz.append((x_rnd, y_rnd, z_new))
                 listrpy.append((roll_rnd, pitch_rnd, yaw_rnd))
@@ -349,8 +380,10 @@ class GantryServer:
 
             self.PositionGrid = sorted_list
             gantry_samples_list = np.concatenate( [ gtf.position_from_state(state) for state in sorted_list ] )
-            outFile = open( "gantry_random_sample_sequence_gantry_frame.p", "wb" )
-            pickle.dump(gantry_samples_list, outFile)
+            #outFile = open( "gantry_random_sample_sequence_gantry_frame.p", "wb" )
+            #pickle.dump(gantry_samples_list, outFile)
+
+            scipy.io.savemat("/tmp/gantry_debug.mat", {'pyr_vertex': pyr_vertex, 'Q': Q, 'u': u, "focal_plane_corners": focal_plane_corners, "proj_tag_corners_list": proj_tag_corners_list, 'gantry_samples_list': gantry_samples_list})
 
             outFile = open( "gantry_random_sample_sequence.p", "wb" )
             print 'file open'
@@ -367,6 +400,8 @@ class GantryServer:
 
         print 'Num. points: ', len(self.PositionGrid)
         print 'file closed'
+
+        self.tagImage = 'robots.jpg'
 
         self.mutex_new_pose = threading.Lock()
         self.mutex_moving = threading.Lock()
@@ -393,20 +428,41 @@ class GantryServer:
         self.ack_sub = rospy.Subscriber('/image_server/ack', String, self.http_ack_cb, queue_size=10)
         self.set_image_pub = rospy.Publisher('/image_server/set_image', String, queue_size=10)
 
-
+        self.old_pose = [0,0,0,0,0,0]
+        self.new_pose = [0,0,0,0,0,0]
         # self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
-        self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
+        self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = False, verbose = False, state_cb = self.GantryStateCB, is_sim=False)
         print 'XXXX'
         self.gantry.write('SPEED 50\r')
                     # self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
         # self.gantry.moveRel(dx_m=1.17, dy_m=0.3, dz_m=0.7, droll_deg=-180.0, dpitch_deg=90.0, dyaw_deg=52.0)
-        self.gantry.moveRel(dx_m=1.17, dy_m=0.0, dz_m=0.7, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
+
+        with self.mutex_new_pose:
+            new_pose = self.new_pose
+        while new_pose ==  [0,0,0,0,0,0]:
+            with self.mutex_new_pose:
+                new_pose = self.new_pose
+            time.sleep(0.1)
+            print 'sleeping'
+        # dx = 1.17 - self.new_pose[0]
+        # dy = 0.0 - self.new_pose[1]
+        # dz = 0.7 - self.new_pose[2]
+        # droll = -90.0 - self.new_pose[3]
+        # dpitch = 90.0 - self.new_pose[4]
+        # dyaw = 52.0 - self.new_pose[5]
+        dx = 0.105435 - new_pose[0]
+        dy = 0.999885 - new_pose[1]
+        dz = 0.420645 - new_pose[2]
+        droll = 0.0 - new_pose[3]
+        dpitch = 90.0 - new_pose[4]
+        dyaw = 52.0 - new_pose[5]
+        # self.gantry.moveRel(dx_m=dx, dy_m=dy, dz_m=dz, droll_deg=droll, dpitch_deg=dpitch, dyaw_deg=dyaw)
+
+        # self.gantry.moveRel(dx_m=1.17, dy_m=0.0, dz_m=0.7, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
 
                 # self.gantry.moveRel(dx_m=0.0, dy_m=1.15, dz_m=0.1, droll_deg=0.0, dpitch_deg=90.0, dyaw_deg=52.0)
                 # self.gantry.moveRel(dx_m=0.5, dy_m=0.5, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
         self.gantry.write('SPEED 60\r')
-        self.old_pose = [0,0,0,0,0,0]
-        self.new_pose = [0,0,0,0,0,0]
 
         self.last_cmd = ""
 
@@ -425,7 +481,6 @@ class GantryServer:
         self.ui_thread = None
         self.tagImageNames = []
 
-        self.tagImage = 'robots.jpg'
         global imagePath
         imagePath = roslib.packages.get_pkg_dir('ftag2test') + '/html/images/ftag2_6S2F22B'
 
@@ -462,7 +517,7 @@ class GantryServer:
                 c = raw_input()
             else:
                 c = getch()
-            if c == 'x' or c == 'X':
+            if c == 'x' or c == 'X' or c == chr(27):
                 rospy.loginfo('EXIT')
                 self.alive = False
             elif c == 'm' or c == 'M':
@@ -476,10 +531,10 @@ class GantryServer:
             elif c == ' ':
                 if self.paused:
                     self.paused = False
-                    rospy.loginfo('PAUSED')
+                    rospy.loginfo('RESUMED')
                 else:
                     self.paused = True
-                    rospy.loginfo('RESUMED')
+                    rospy.loginfo('PAUSED')
             time.sleep(0.1)
         print 'EXIT 2'
 
@@ -700,9 +755,9 @@ class GantryServer:
                     print '\nCurr. pose: ', self.new_pose
                     #           self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy )
                     self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz, droll_deg = droll, dpitch_deg = dpitch, dyaw_deg = dyaw )
-                    pose = sum ([ self.PositionGrid[self.num_positions], [new_r, new_p, new_y] ], [] )
-                    cmd = 'mov: ' +  ', '.join(map(str,pose))
-                    print '\r', cmd
+                    # pose = sum ([ self.PositionGrid[self.num_positions], [new_r, new_p, new_y] ], [] )
+                    # cmd = 'mov: ' +  ', '.join(map(str,pose))
+                    # print '\r', cmd
 
                     state_msg = ControllerState()
                     state_msg.comm_pos_x = self.PositionGrid[self.num_positions][0]

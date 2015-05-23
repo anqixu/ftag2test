@@ -135,11 +135,8 @@ class GantryServer:
           
   
   def GantryStateCB(self,state):
-    # print 'State: ', state
-    
     self.mutex.acquire()
-    # self.gantry_pose = PoseStamped()
-    
+
     self.new_pose = [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
     dim = MultiArrayDimension()
     dim.label = 'width'
@@ -150,22 +147,8 @@ class GantryServer:
     msg.layout.dim.append(dim)
     msg.data = self.new_pose
     self.gantry_state_pub.publish(msg)
-                         
-#     pose.header.frame_id = frame_id
-#     self.gantry_pose.header.stamp = rospy.Time.now()
-#     self.gantry_pose.pose.position.x = state.x_m
-#     self.gantry_pose.pose.position.y = state.y_m
-#     self.gantry_pose.pose.position.z = state.z_m
-#
-#     quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
     self.mutex.release()
-# 
-#     self.gantry_pose.pose.orientation.x = quaternion[0]
-#     self.gantry_pose.pose.orientation.y = quaternion[1]
-#     self.gantry_pose.pose.orientation.z = quaternion[2]
-#     self.gantry_pose.pose.orientation.w = quaternion[3]
-# #     
-#     self.gantry_state_pub.publish(gantry_pose)
+
 
   def __init__(self):
     
@@ -178,11 +161,19 @@ class GantryServer:
     self.gantry_state_pub = rospy.Publisher('/gantry_state', Float64MultiArray, queue_size=10)
     self.tag_det_pub = rospy.Publisher('/tag_det', PoseStamped, queue_size=10)
 
-    self.tag_sub = rospy.Subscriber('/ftag2/detected_tags', TagDetections, self.processTagDetection)
-
-    self.gantry = GantryController(device='/dev/ttyUSB0', verbose = False, force_calibrate = False, state_cb = self.GantryStateCB)
+    self.gantry = GantryController(device='/dev/ttyUSB0', verbose = False, force_calibrate = True, state_cb = self.GantryStateCB)
 #     self.gantry = GantryController(device='/dev/ttyUSB0', verbose = False, force_calibrate = False, state_cb = self.GantryStateCB)
-    self.gantry_pose = PoseStamped()
+
+    # self.mutex.acquire()
+    # dx = 1.17 - self.new_pose[0]
+    # dy = 0.0 - self.new_pose[1]
+    # dz = 0.7 - self.new_pose[2]
+    # droll = -90.0 - self.new_pose[3]
+    # dpitch = 90.0 - self.new_pose[4]
+    # dyaw = 52.0 - self.new_pose[5]
+    # self.mutex.release()
+    # self.gantry.moveRel(dx_m=dx, dy_m=dy, dz_m=dz, droll_deg=droll, dpitch_deg=dpitch, dyaw_deg=dyaw)
+
     self.saved_states = []
     self.gantry.write('SPEED 50\r')
     
@@ -261,18 +252,6 @@ class GantryServer:
         self.mv_delta += 0.0025
         print "Move step size: ", self.mv_delta
       elif c == chr(27):
-#         corners = [ [0.5874900000000001, 0.617505, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004],
-#                    [0.51729, 0.617505, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.51729, 0.50478, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.587325, 0.50475, 0.049980000000000004, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.63732, 0.69246, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.46206, 0.69246, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.46206, 0.432315, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.637095, 0.4323, 0.199965, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.6845100000000001, 0.767175, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.39936, 0.7671600000000001, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004],
-#                    [0.39939, 0.359505, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004], 
-#                    [0.68436, 0.35946, 0.34995, -0.0, 0.008930104000000938, 51.993460874200004] ] 
         outFile = open( "save.p", "wb" )
         pickle.dump(self.saved_states,outFile)
           
@@ -281,15 +260,7 @@ class GantryServer:
         self.gantry.suicide()
         rospy.signal_shutdown('User pressed X')
         self.shutdown()
-#       elif c == ' ':
-#         moved = False
-#         if self.alive:
-#           self.alive = False
-#           rospy.loginfo('PAUSED')
-#         else:
-#           self.alive = True
-#           rospy.loginfo('RESUMED')
-        
+
       if moved == True:  
         self.MOVING = True
         self.gantry_timeout = threading.Timer(0.5, self.gantryStopped)
@@ -297,7 +268,6 @@ class GantryServer:
         
   def gantryStopped(self):
     moved = False
-    
     for (a,b) in zip(self.old_pose, self.new_pose):
       if a != b:
         moved = True
@@ -305,58 +275,19 @@ class GantryServer:
     
     if moved:
       self.MOVING = True
-#       self.gantry_timeout = rospy.Timer(rospy.Duration(1.0), self.gantryStopped, True)
       self.gantry_timeout = threading.Timer(0.5, self.gantryStopped)
       self.gantry_timeout.start()
       
     else:
       self.MOVING = False
       self.ID += 1
-#       self.gantry_timeout.shutdown()
-#       self.gantry_timeout = threading.Timer(0.5, self.gantryStopped)
-#       self.gantry_timeout.start()
-#       self.gantry_timeout = None
+
     self.old_pose = self.new_pose
 
 
-  def processTagDetection(self, msg):
-    if len(msg.tags) > 0 and not self.MOVING and self.alive:
-      tag_pose = PoseStamped()
-      tag_msg = msg.tags[0]
-#       print "\n\rTag msg: ", tag_msg
-      tag_pose.pose = tag_msg.pose
-      
-      tag_pose.header.stamp = rospy.Time.now()
-      self.gantry_pose.header.stamp = rospy.Time.now()
-      tag_pose.header.frame_id = str(self.ID)
-      self.gantry_pose.header.frame_id = str(self.ID)
-      self.tag_det_pub.publish(tag_pose)
-      self.gantry_state_pub.publish(self.gantry_pose)
-
-#     self.new_pose =  [state.x_m, state.y_m, state.z_m, state.roll_deg, state.pitch_deg, state.yaw_deg]
-#                     
-#     pose.header.frame_id = frame_id
-#     pose.header.stamp = rospy.Time.now()
-#     self.mutex.acquire()
-#     gantry_pose.pose.position.x = state.x_m
-#     gantry_pose.pose.position.y = state.y_m
-#     gantry_pose.pose.position.z = state.z_m
-# #     
-#     quaternion = tf.transformations.quaternion_from_euler(state.roll_deg*math.pi/180.0, state.pitch_deg*math.pi/180.0, state.yaw_deg*math.pi/180.0)
-#     self.mutex.release()
-# 
-#     gantry_pose.pose.orientation.x = quaternion[0]
-#     gantry_pose.pose.orientation.y = quaternion[1]
-#     gantry_pose.pose.orientation.z = quaternion[2]
-#     gantry_pose.pose.orientation.w = quaternion[3]
-# #     
-
-
-      
   def spin(self):
     while not self.exit:
-#       print "State: ", str(self.fsm)
-      rospy.sleep(0.1)   
+      rospy.sleep(0.1)
         
       if not self.alive or self.fsm == State.IDLE:
 #         rospy.sleep(0.1)
