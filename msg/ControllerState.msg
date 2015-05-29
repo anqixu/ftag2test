@@ -9,24 +9,15 @@ float64 comm_rot_y
 
 #int32 frameID
 
-#float64[] encoded_phases # empty == end of sequence
-
 string command
 string fsm
 int32 pos_count
-int32 rot_count
-
-#int32 num_detections
-#int32 num_images
-#int32 num_poses
-
-#int32 image_count
-#int32 image_count_in_pos
-
-int32 total_image_count
-int32 tag_count_in_pose
-int32 detection_count
-int32 num_successful_detections
+int32 total_img_count
+int32 num_tags_in_pose_count
+int32 num_detections_curr_img
+int32 num_failed_det_curr_img
+int32 num_det_in_pose
+int32 num_failed_det_in_pose
 
 bool failed_image
 bool failed_pose
@@ -34,4 +25,3 @@ bool failed_pose
 string tag_payload
 string tag_family
 int32 num_tag_family
-#int32 images_family_count

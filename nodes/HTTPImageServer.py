@@ -34,7 +34,7 @@ import BaseHTTPServer
 
 
 
-HOST_NAME = '192.168.2.10'
+HOST_NAME = ''
 PORT_NUMBER = 8888
 
 
