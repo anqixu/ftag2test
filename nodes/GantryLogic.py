@@ -49,15 +49,17 @@ MAX_y = 1.15
 MIN_z = 0.2
 MAX_z = 0.8
 
-maxNumTagsPerPose = 5
-maxNumDetections = 4
+maxNumTagsPerPose = 10
+maxNumDetPerImg = 1
+RATIO_IMG_FAILS_BEFORE_IMG_CHANGE = 0.25
+RATIO_OF_TAG_DET_FAILS_BEFORE_MOVE = 0.25
+NUM_IMAGES_ALLOWED_NO_DET = 10
+NUM_DIFF_TAGS_ALLOWED_NO_DET = 4
 
 DETECTION_TIMEOUT_DURATION = 0.1
-IMAGE_TIMEOUT_DURATION = 0.5
-WHITE_TIMEOUT_DURATION = 0.3
+IMAGE_TIMEOUT_DURATION = 0.1
+WHITE_TIMEOUT_DURATION = 0.1
 TIME_WAIT_FOR_IMAGE_TO_LOAD = 0.01
-NUM_FAILURES_UNTIL_NEXT_TAG = 10
-NUM_FAILURES_UNTIL_NEXT_POSE = maxNumTagsPerPose / 3
 MAIN_THREAD_SLEEP_TIME = 0.01
 
 PYCHARM_KEYBOARD = False
@@ -137,7 +139,7 @@ class Enum(set):
         raise AttributeError
 
 
-State = Enum(["IDLE", "MOVE", "WAIT_MOVING", "ROTATE", "WAIT_ROTATING", "SHOW_TAGS","WAIT_SHOWING_TAGS", "WAIT_SHOWING_WHITE", "AWAITING_DETECTION", "REPORT_FINAL_DETECTION"])
+State = Enum(["MOVE", "WAIT_MOVING", "SHOW_TAGS", "WAIT_SHOWING_TAGS", "WAIT_SHOWING_WHITE", "AWAITING_DETECTION", "GOT_DETECTIONS", "REPORT_FINAL_DETECTION"])
 
 def dist(p0, p1):
     d = [ (p0[i]-p1[i])**2 for i in range(len(p0)) ]
@@ -290,7 +292,10 @@ class GantryServer:
                 found_valid_pose = False
                 while not found_valid_pose:
                     found_valid_pose = True
+<<<<<<< HEAD
 
+=======
+>>>>>>> 4824e8b2b7dfbf85bfeb80e331a99d965e1f822b
                     # generate the random pose
                     x_rnd = random.uniform(MIN_x, MAX_x)
                     y_rnd = random.uniform(MIN_y, MAX_y)
@@ -346,8 +351,13 @@ class GantryServer:
                         listxyz.append((x_rnd, y_rnd, z_new))
                         listrpy.append((roll_rnd, pitch_rnd, yaw_rnd))
                         proj_tag_corners_list.append(proj_tag_corners)
+<<<<<<< HEAD
                         gantry_tag_corners_list.append(tag_corners_in_gantry) # AX
                         gantry_tag_centers_list.append(gtf.position_from_state(state)) # AX
+=======
+                        listxyz.append((x_rnd, y_rnd, z_new))
+                        listrpy.append((roll_rnd, pitch_rnd, yaw_rnd))
+>>>>>>> 4824e8b2b7dfbf85bfeb80e331a99d965e1f822b
 
             last = listxyz.pop(0)
             last_orient = listrpy.pop(0)
@@ -405,6 +415,7 @@ class GantryServer:
 
         self.mutex_new_pose = threading.Lock()
         self.mutex_moving = threading.Lock()
+        self.mutex_detections = threading.Lock()
 
         self.fsm = State.MOVE
         self.alive = True
@@ -412,6 +423,8 @@ class GantryServer:
         self.mutex_moving.acquire()
         self.MOVING = True
         self.mutex_moving.release()
+
+        self.published_image = False
 
         self.state_pub = rospy.Publisher('/gantry/controller_state', ControllerState, queue_size=10)
         self.gantry_state_pub = rospy.Publisher('/gantry/gantry_state', Float64MultiArray, queue_size=10)
@@ -421,8 +434,8 @@ class GantryServer:
         self.image_pub = rospy.Publisher("/camera2/image_raw", Image,  queue_size = 1)
         self.final_image_pub = rospy.Publisher("/camera/image_raw", Image,  queue_size = 1)
         self.failed_image_pub = rospy.Publisher("/gantry/failed/image_raw", Image,  queue_size = 1)
-        self.camera_info_sub = rospy.Subscriber("/camera1/camera_info", CameraInfo, self.processCamInfo,  queue_size = 1)
-        self.camera_info_pub = rospy.Publisher("/camera2/camera_info", CameraInfo, queue_size = 1)
+        # self.camera_info_sub = rospy.Subscriber("/camera1/camera_info", CameraInfo, self.processCamInfo,  queue_size = 1)
+        # self.camera_info_pub = rospy.Publisher("/camera2/camera_info", CameraInfo, queue_size = 1)
         self.final_camera_info_pub = rospy.Publisher("/camera/camera_info", CameraInfo, queue_size = 1)
         self.failed_camera_info_pub = rospy.Publisher("/gantry/failed/camera_info", CameraInfo, queue_size = 1)
         self.ack_sub = rospy.Subscriber('/image_server/ack', String, self.http_ack_cb, queue_size=10)
@@ -430,21 +443,35 @@ class GantryServer:
 
         self.old_pose = [0,0,0,0,0,0]
         self.new_pose = [0,0,0,0,0,0]
+<<<<<<< HEAD
         # self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
         self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = False, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
         print 'XXXX'
+=======
+        self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = False, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
+        # self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=False)
+
+>>>>>>> 4824e8b2b7dfbf85bfeb80e331a99d965e1f822b
         self.gantry.write('SPEED 50\r')
                     # self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
         # self.gantry.moveRel(dx_m=1.17, dy_m=0.3, dz_m=0.7, droll_deg=-180.0, dpitch_deg=90.0, dyaw_deg=52.0)
         '''
         with self.mutex_new_pose:
             new_pose = self.new_pose
+<<<<<<< HEAD
         while new_pose ==  [0,0,0,0,0,0]:
             with self.mutex_new_pose:
                 new_pose = self.new_pose
             time.sleep(0.1)
             print 'sleeping'
         '''
+=======
+        # while new_pose ==  [0,0,0,0,0,0]:
+        #     with self.mutex_new_pose:
+        #         new_pose = self.new_pose
+        #     time.sleep(0.1)
+
+>>>>>>> 4824e8b2b7dfbf85bfeb80e331a99d965e1f822b
         # dx = 1.17 - self.new_pose[0]
         # dy = 0.0 - self.new_pose[1]
         # dz = 0.7 - self.new_pose[2]
@@ -457,15 +484,10 @@ class GantryServer:
         droll = 0.0 - new_pose[3]
         dpitch = 90.0 - new_pose[4]
         dyaw = 52.0 - new_pose[5]
-        # self.gantry.moveRel(dx_m=dx, dy_m=dy, dz_m=dz, droll_deg=droll, dpitch_deg=dpitch, dyaw_deg=dyaw)
 
-        # self.gantry.moveRel(dx_m=1.17, dy_m=0.0, dz_m=0.7, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
-
-                # self.gantry.moveRel(dx_m=0.0, dy_m=1.15, dz_m=0.1, droll_deg=0.0, dpitch_deg=90.0, dyaw_deg=52.0)
-                # self.gantry.moveRel(dx_m=0.5, dy_m=0.5, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
         self.gantry.write('SPEED 60\r')
-
         self.last_cmd = ""
+        self.last_payload = ""
 
         r = rospy.Rate(10) # 10hz
 
@@ -473,12 +495,16 @@ class GantryServer:
         self.image_timeout = None
         self.gantry_timeout = None
 
-        self.total_image_count = 0
-        self.tag_count_in_pose = 0
-        self.num_successful_detections = 0
-        self.num_failed_in_pose = 0
-        self.num_positions = 0
-        self.new_pose = [0,0,0,0,0,0]
+        self.detected = False
+        self.pos_count = 0
+        self.total_img_count = 0
+        self.num_tags_in_pose_count = 0
+
+        self.num_detections_curr_img = 0
+        self.num_failed_det_curr_img = 0
+        self.num_det_in_pose = 0
+        self.num_failed_det_in_pose = 0
+
         self.ui_thread = None
         self.tagImageNames = []
 
@@ -491,8 +517,6 @@ class GantryServer:
             error('Could not find any images in: ' + imagePath)
 
         self.max_num_rot_per_position = 1
-        self.num_detections = 0
-        self.num_images_passed = 0
 
         rospy.on_shutdown(self.shutdown)
 
@@ -566,26 +590,8 @@ class GantryServer:
 
 
     def cleanImage(self):
-        self.mutex_moving.acquire()
-        moving = self.MOVING
-        self.mutex_moving.release()
-
-        self.num_detections = 0
-        self.num_images_passed = 0
-
-        self.fsm = State.WAIT_SHOWING_WHITE
-
-        cmd = "show: white.png"
-        state_msg = ControllerState()
-        state_msg.command = cmd
-        state_msg.fsm = str(self.fsm)
-        state_msg.pos_count = self.num_positions
-        state_msg.total_image_count = self.total_image_count
-        state_msg.tag_count_in_pose = self.tag_count_in_pose
-        state_msg.num_successful_detections = self.num_successful_detections
-        state_msg.detection_count = self.num_detections
-
-        self.state_pub.publish(state_msg)
+        self.last_cmd = "show: white.png"
+        self.publishState('WHITE')
 
         self.tagImage = 'white.png'
         self.set_image_pub.publish(self.tagImage)
@@ -599,14 +605,12 @@ class GantryServer:
 
     def processIm(self, msg):
         if not self.paused and self.fsm == State.WAIT_SHOWING_TAGS:
-            self.mutex_moving.acquire()
-            moving = self.MOVING
-            self.mutex_moving.release()
-            if not moving:
-                self.fsm = State.AWAITING_DETECTION
-                self.num_images_passed += 1
-                self.last_img = msg
-                self.image_pub.publish(msg)
+            with self.mutex_detections:
+                if not self.published_image:
+                    self.last_img = msg
+                    self.image_pub.publish(msg)
+                    self.published_image = True
+                    # print '\n\rPUBLISHED'
 
 
     def processCamInfo(self,msg):
@@ -620,28 +624,19 @@ class GantryServer:
 
 
     def processDet(self, msg):
-        if not self.paused and self.fsm == State.AWAITING_DETECTION:
+        with self.mutex_detections:
+            detected = self.detected
+        if not self.paused and self.fsm == State.WAIT_SHOWING_TAGS and self.published_image:
+            # print '\n\rGOT DETECTION'
+            # TODO: Make sure only maxNumDetPerImg get published
             if len(msg.tags) > 0:
-                got_detection = True
-                self.num_detections += 1
-                state_msg = ControllerState()
-                state_msg.command = self.last_show_cmd
-                state_msg.fsm = str('DETECTED')
-                state_msg.pos_count = self.num_positions
-                state_msg.total_image_count = self.total_image_count
-                state_msg.tag_count_in_pose = self.tag_count_in_pose
-                state_msg.num_successful_detections = self.num_successful_detections
-                state_msg.detection_count = self.num_detections
-                state_msg.tag_payload = self.last_payload
-                self.state_pub.publish(state_msg)
-                self.final_camera_info_pub.publish(self.last_cam_info)
+                self.detected = True
+                self.publishState('DETECTED')
                 self.final_image_pub.publish(self.last_img)
                 self.ftag2_pub.publish(msg)
-                # print '\rNum det: ', self.num_detections
             else:
-                # TODO: Do something here
-                x = 'DO SOMETHING'
-            self.fsm = State.WAIT_SHOWING_TAGS
+                self.detected = False
+            self.fsm = State.GOT_DETECTIONS
 
 
     # def detectionTimeoutCB(self):
@@ -656,95 +651,71 @@ class GantryServer:
 
     def spin(self):
         while self.alive:
-            # print '\rNum ', self.num_positions
-            # print '\rNum detections', self.num_detections
-            # print '\rNum images total', self.total_image_count
-            # print '\rNum images failed', self.num_failed_in_pose
-            # print '\rNum images passed', self.num_images_passed
-            #           rospy.sleep(0.01)
-            if self.paused or self.fsm == State.IDLE or self.fsm == State.WAIT_SHOWING_WHITE:
+            if self.paused or self.fsm == State.WAIT_SHOWING_WHITE:
                 time.sleep(MAIN_THREAD_SLEEP_TIME)
 
-            elif self.alive and self.fsm == State.WAIT_SHOWING_TAGS:
-                self.mutex_moving.acquire()
-                moving = self.MOVING
-                self.mutex_moving.release()
-                if not moving:
-                    global maxNumDetections
-                    global maxNumTagsPerPose
-                    global NUM_FAILURES_UNTIL_NEXT_TAG
-                    global NUM_FAILURES_UNTIL_NEXT_POSE
-                    state_msg = ControllerState()
-                    if self.tag_count_in_pose > maxNumTagsPerPose:
-                        print 'Finished collecting ', self.num_successful_detections, ' detections moving...'
-                        self.tag_count_in_pose = 0
-                        self.num_failed_in_pose = 0
-                        self.num_successful_detections = 0
-                        self.fsm = State.MOVE
-                    elif self.num_failed_in_pose > NUM_FAILURES_UNTIL_NEXT_POSE:
-                        state_msg.failed_image = False
-                        state_msg.failed_pose = True
-                        state_msg.fsm = str(self.fsm)
-                        state_msg.pos_count = self.num_positions
-                        state_msg.total_image_count = self.total_image_count
-                        state_msg.tag_count_in_pose = self.tag_count_in_pose
-                        state_msg.num_successful_detections = self.num_successful_detections
-                        state_msg.detection_count = self.num_detections
-                        self.state_pub.publish(state_msg)
-                        print 'Failed to detect enough tags in this pose, moving...'
-                        self.failed_image_pub.publish(self.last_img)
-                        self.failed_camera_info_pub.publish(self.last_cam_info)
-                        self.tag_count_in_pose = 0
-                        self.num_failed_in_pose = 0
-                        self.num_successful_detections = 0
-                        self.fsm = State.MOVE
-                    elif self.num_detections >= maxNumDetections:
-                        print 'Tag succesully detected ', self.num_detections, 'times, showing next image.'
-                        self.num_successful_detections += 1
-                        print 'before clean'
-                        self.cleanImage()
-                        print 'After clean'
-                        self.fsm = State.SHOW_TAGS
-                    elif self.num_detections < self.num_images_passed - NUM_FAILURES_UNTIL_NEXT_TAG:
-                        state_msg.failed_image = True
-                        state_msg.failed_pose = False
-                        state_msg.fsm = str(self.fsm)
-                        state_msg.pos_count = self.num_positions
-                        state_msg.pos_count = self.num_positions
-                        state_msg.total_image_count = self.total_image_count
-                        state_msg.tag_count_in_pose = self.tag_count_in_pose
-                        state_msg.num_successful_detections = self.num_successful_detections
-                        state_msg.detection_count = self.num_detections
-                        self.state_pub.publish(state_msg)
-                        print 'Failed to get enough detections of this tag, showing next image.'
-                        self.failed_image_pub.publish(self.last_img)
-                        self.failed_camera_info_pub.publish(self.last_cam_info)
-                        self.cleanImage()
-                        self.num_failed_in_pose += 1
-                        self.fsm = State.SHOW_TAGS
+                    ##############################################################################
+                    ##############################################################################
 
+            elif self.alive and ( self.fsm == State.WAIT_SHOWING_TAGS or self.fsm == State.AWAITING_DETECTION ):
+                time.sleep(MAIN_THREAD_SLEEP_TIME)
+
+                    ##############################################################################
+                    ##############################################################################
+
+            elif self.alive and self.fsm == State.GOT_DETECTIONS:
+                with self.mutex_detections:
+                    if self.published_image == False:
+                        continue
+                    detected = self.detected
+                if detected:
+                    self.num_detections_curr_img += 1
                 else:
-                    time.sleep(0.001)
+                    self.num_failed_det_curr_img += 1
+                new_state = State.WAIT_SHOWING_TAGS
+                img_ratio = float(self.num_detections_curr_img) / ( float(self.num_failed_det_curr_img)
+                                                                + float(self.num_detections_curr_img) )
+                if self.num_detections_curr_img >= maxNumDetPerImg:
+                    # print '\n\rTAG CHANGE BECAUSE FINISHED'
+                    self.num_det_in_pose += 1
+                    new_state = State.SHOW_TAGS
+                if self.num_failed_det_curr_img > NUM_IMAGES_ALLOWED_NO_DET and img_ratio < RATIO_IMG_FAILS_BEFORE_IMG_CHANGE:
+                    # print '\n\rTAG CHANGE BECAUSE TOO MANY FAILS'
+                    self.num_failed_det_in_pose += 1
+                    new_state = State.SHOW_TAGS
+                pose_ratio = float(self.num_det_in_pose)/float(self.num_tags_in_pose_count)
+                if self.num_tags_in_pose_count > NUM_DIFF_TAGS_ALLOWED_NO_DET and pose_ratio < RATIO_OF_TAG_DET_FAILS_BEFORE_MOVE:
+                    # print '\n\rPOSE CHANGE BECAUSE TOO MANY FAILS'
+                    new_state = State.MOVE
+                if self.num_det_in_pose >= maxNumTagsPerPose:
+                    # print '\n\rPOSE CHANGE BECAUSE FINISHED'
+                    new_state = State.MOVE
+
+                if new_state != State.WAIT_SHOWING_TAGS:
+                    self.cleanImage()
+                self.fsm = new_state
+                with self.mutex_detections:
+                    self.detected = False
+                    self.published_image = False
+                self.publishState('PROCESSED')
 
                     ##############################################################################
                     ##############################################################################
 
             elif self.alive and self.fsm == State.MOVE:
-                print "\n\rNum. positions", self.num_positions
-                self.num_rotations = 0
-                if self.num_positions >= len(self.PositionGrid):
+                # print "\n\rNum. positions", self.pos_count
+                # print 'MOVING'
+                if self.pos_count >= len(self.PositionGrid):
                     self.fsm = State.REPORT_FINAL_DETECTION
-                    self.num_positions = 0
                 else:
+                    self.num_det_in_pose = 0
+                    self.num_failed_det_in_pose = 0
+                    self.num_tags_in_pose_count = 0
 
-                    # TODO: send movement command
-
-                    cmd = ""
-                    #           if self.num_positions > 0 :
                     self.mutex_new_pose.acquire()
-                    dx = self.PositionGrid[self.num_positions][0] - self.new_pose[0]
-                    dy = self.PositionGrid[self.num_positions][1] - self.new_pose[1]
-                    dz = self.PositionGrid[self.num_positions][2] - self.new_pose[2]
+                    dx = self.PositionGrid[self.pos_count][0] - self.new_pose[0]
+                    dy = self.PositionGrid[self.pos_count][1] - self.new_pose[1]
+                    dz = self.PositionGrid[self.pos_count][2] - self.new_pose[2]
                     new_r = random.uniform(-360.0, 0.0)
                     new_p = random.uniform( 0.0, 60.0)
                     new_y = random.uniform(0.0 , 360.0)
@@ -753,31 +724,16 @@ class GantryServer:
                     dyaw = new_y - self.new_pose[5]
                     self.mutex_new_pose.release()
 
-                    print '\nCurr. pose: ', self.new_pose
+                    # print '\n\rCurr. pose: ', self.new_pose
                     #           self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz) # droll_deg = dr, dpitch_deg = dp, dyaw_deg = dy )
                     self.gantry.moveRel(dx_m = dx, dy_m = dy, dz_m = dz, droll_deg = droll, dpitch_deg = dpitch, dyaw_deg = dyaw )
-                    # pose = sum ([ self.PositionGrid[self.num_positions], [new_r, new_p, new_y] ], [] )
-                    # cmd = 'mov: ' +  ', '.join(map(str,pose))
-                    # print '\r', cmd
+                    pose = self.PositionGrid[self.pos_count]
+                    self.last_cmd = 'mov: ' +  ', '.join(map(str,pose))
+                    # print '\n\r', self.last_cmd
 
-                    state_msg = ControllerState()
-                    state_msg.comm_pos_x = self.PositionGrid[self.num_positions][0]
-                    state_msg.comm_pos_y = self.PositionGrid[self.num_positions][1]
-                    state_msg.comm_pos_z = self.PositionGrid[self.num_positions][2]
-                    state_msg.comm_rot_r = new_r
-                    state_msg.comm_rot_p = new_p
-                    state_msg.comm_rot_y = new_y
-                    state_msg.command = cmd
-                    state_msg.fsm = str(self.fsm)
-                    state_msg.pos_count = self.num_positions
-                    state_msg.total_image_count = self.total_image_count
-                    state_msg.tag_count_in_pose = self.tag_count_in_pose
-                    state_msg.num_successful_detections = self.num_successful_detections
-                    state_msg.detection_count = self.num_detections
+                    self.publishState(self.last_cmd)
 
-                    self.state_pub.publish(state_msg)
-
-                    self.num_positions += 1
+                    self.pos_count += 1
                     self.mutex_moving.acquire()
                     self.MOVING = True
                     self.mutex_moving.release()
@@ -790,29 +746,29 @@ class GantryServer:
                     ##############################################################################
 
             elif self.alive and self.fsm == State.SHOW_TAGS:
-                self.num_detections = 0
+                with self.mutex_moving:
+                    moving = self.MOVING
+                    if moving:
+                        time.sleep(MAIN_THREAD_SLEEP_TIME)
+                        continue
+
+                self.num_detections_curr_img = 0
+                self.num_failed_det_curr_img = 0
+                self.total_img_count += 1
+                self.num_tags_in_pose_count += 1
+
                 rand_idx = random.randrange(len(self.tagImageNames))
 
-                global tag_family
                 self.tagImage = tag_family + '/' + self.tagImageNames[rand_idx]
                 self.set_image_pub.publish(self.tagImage)
 
-                self.last_show_cmd = "show: " + self.tagImageNames[rand_idx]
-                print '\n\r', self.last_show_cmd
+                self.last_cmd = "show: " + self.tagImageNames[rand_idx]
+                # print '\n\r', self.last_cmd
 
                 # TODO: change the following line according to the new tag family
-                self.last_payload = self.tagImageNames[rand_idx][17:52]
+                self.last_payload = self.tagImageNames[rand_idx][14:31]
 
-                state_msg = ControllerState()
-                state_msg.command = self.last_show_cmd
-                state_msg.fsm = str(self.fsm)
-                state_msg.pos_count = self.num_positions
-                state_msg.total_image_count = self.total_image_count
-                state_msg.tag_count_in_pose = self.tag_count_in_pose
-                state_msg.num_successful_detections = self.num_successful_detections
-                state_msg.detection_count = self.num_detections
-                state_msg.tag_payload = self.last_payload
-                self.state_pub.publish(state_msg)
+                self.publishState(self.last_cmd)
 
                 global TIME_WAIT_FOR_IMAGE_TO_LOAD
                 self.http_ack = False
@@ -820,11 +776,7 @@ class GantryServer:
                     self.set_image_pub.publish(self.tagImage)
                     time.sleep(TIME_WAIT_FOR_IMAGE_TO_LOAD)
 
-                global IMAGE_TIMEOUT_DURATION
                 time.sleep(IMAGE_TIMEOUT_DURATION)
-
-                self.total_image_count += 1
-                self.tag_count_in_pose += 1
 
                 self.fsm = State.WAIT_SHOWING_TAGS
 
@@ -834,18 +786,45 @@ class GantryServer:
             elif self.fsm == State.REPORT_FINAL_DETECTION:
                 print "\n\rBye!\r",
                 self.alive = False
-                #           rospy.signal_shutdown('Finished')
-
-                if self.image_timeout is not None:
-                    #               self.image_timeout.shutdown()
-                    self.image_timeout.cancel()
-                    self.image_timeout = None
-
-                if self.detection_timeout is not None:
-                    self.detection_timeout.cancel()
-                    self.detection_timeout = None
 
         print 'EXIT SPIN'
+
+
+    def publishState(self, command):
+        state_msg = ControllerState()
+        state_msg.command = command
+        state_msg.fsm = str(self.fsm)
+        state_msg.pos_count = self.pos_count
+        state_msg.total_img_count = self.total_img_count
+        state_msg.num_tags_in_pose_count = self.num_tags_in_pose_count
+        state_msg.num_detections_curr_img = self.num_detections_curr_img
+        state_msg.num_failed_det_curr_img = self.num_failed_det_curr_img
+        state_msg.num_det_in_pose = self.num_det_in_pose
+        state_msg.num_failed_det_in_pose = self.num_failed_det_in_pose
+        state_msg.tag_payload = self.last_payload
+
+        state_msg.comm_pos_x = self.PositionGrid[self.pos_count][0]
+        state_msg.comm_pos_y = self.PositionGrid[self.pos_count][1]
+        state_msg.comm_pos_z = self.PositionGrid[self.pos_count][2]
+        state_msg.comm_rot_r = self.PositionGrid[self.pos_count][3]
+        state_msg.comm_rot_p = self.PositionGrid[self.pos_count][4]
+        state_msg.comm_rot_y = self.PositionGrid[self.pos_count][5]
+
+        self.state_pub.publish(state_msg)
+        print '\n\r command: ', command
+        print '\n\r pos_count: ', self.pos_count
+        print '\n\r total_img_count: ', self.total_img_count
+        print '\n\r num_tags_in_pose_count: ', self.num_tags_in_pose_count
+        print '\n\r num_detections_curr_img: ', self.num_detections_curr_img
+        print '\n\r num_failed_det_curr_img: ', self.num_failed_det_curr_img
+        print '\n\r num_det_in_pose: ', self.num_det_in_pose
+        print '\n\r num_failed_det_in_pose: ', self.num_failed_det_in_pose
+        print '\n\r tag_payload: ', self.last_payload
+        # print '\n\r Pos: ', [self.PositionGrid[self.pos_count][0], self.PositionGrid[self.pos_count][1],
+        #                      self.PositionGrid[self.pos_count][2], self.PositionGrid[self.pos_count][3],
+        #                      self.PositionGrid[self.pos_count][4], self.PositionGrid[self.pos_count][5] ]
+        time.sleep(0.25)
+
 
 class Usage(Exception):
     def __init__(self, msg):
