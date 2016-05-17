@@ -239,7 +239,7 @@ class GantryServer:
         self.tf_broadcaster = tf.TransformBroadcaster()
         self.tf_listener = tf.TransformListener()
         try:
-            infile = open( "gantry_random_sample_sequence.p", "rb" )
+            infile = open( "crap.p", "rb" )
         except IOError:
             print 'Could not find random sample sequence file. Generating a new sequence...'
             self.PositionGrid = []
@@ -281,17 +281,16 @@ class GantryServer:
                                        (focal_plane_corners[2][0],focal_plane_corners[2][1]),
                                        (focal_plane_corners[3][0],focal_plane_corners[3][1]) ))
             proj_tag_corners_list = []
+            gantry_tag_corners_list = [] # AX
+            gantry_tag_centers_list = [] # AX
 
             cont_rand = 0
             for i in range(num_sample_points):
                 # TODO: Check if all corners are inside the trucated projection plane
                 found_valid_pose = False
-                j = 0
                 while not found_valid_pose:
                     found_valid_pose = True
-                    j+=1
-                    if j == 2:
-                        break
+
                     # generate the random pose
                     x_rnd = random.uniform(MIN_x, MAX_x)
                     y_rnd = random.uniform(MIN_y, MAX_y)
@@ -344,10 +343,11 @@ class GantryServer:
                         found_valid_pose = False
 
                     if found_valid_pose:
+                        listxyz.append((x_rnd, y_rnd, z_new))
+                        listrpy.append((roll_rnd, pitch_rnd, yaw_rnd))
                         proj_tag_corners_list.append(proj_tag_corners)
-
-                listxyz.append((x_rnd, y_rnd, z_new))
-                listrpy.append((roll_rnd, pitch_rnd, yaw_rnd))
+                        gantry_tag_corners_list.append(tag_corners_in_gantry) # AX
+                        gantry_tag_centers_list.append(gtf.position_from_state(state)) # AX
 
             last = listxyz.pop(0)
             last_orient = listrpy.pop(0)
@@ -383,7 +383,7 @@ class GantryServer:
             #outFile = open( "gantry_random_sample_sequence_gantry_frame.p", "wb" )
             #pickle.dump(gantry_samples_list, outFile)
 
-            scipy.io.savemat("/tmp/gantry_debug.mat", {'pyr_vertex': pyr_vertex, 'Q': Q, 'u': u, "focal_plane_corners": focal_plane_corners, "proj_tag_corners_list": proj_tag_corners_list, 'gantry_samples_list': gantry_samples_list})
+            scipy.io.savemat("/tmp/gantry_debug.mat", {'pyr_vertex': pyr_vertex, 'Q': Q, 'u': u, "focal_plane_corners": focal_plane_corners, "proj_tag_corners_list": proj_tag_corners_list, 'gantry_samples_list': gantry_samples_list, 'gantry_tag_centers_list': gantry_tag_centers_list, 'gantry_tag_corners_list': gantry_tag_corners_list})
 
             outFile = open( "gantry_random_sample_sequence.p", "wb" )
             print 'file open'
@@ -431,12 +431,12 @@ class GantryServer:
         self.old_pose = [0,0,0,0,0,0]
         self.new_pose = [0,0,0,0,0,0]
         # self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = True, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
-        self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = False, verbose = False, state_cb = self.GantryStateCB, is_sim=False)
+        self.gantry = GantryController(device='/dev/ttyUSB0', force_calibrate = False, verbose = False, state_cb = self.GantryStateCB, is_sim=True)
         print 'XXXX'
         self.gantry.write('SPEED 50\r')
                     # self.gantry.moveRel(dx_m=1.15/2, dy_m=1.15/2, dz_m=0.8, droll_deg=-90.0, dpitch_deg=90.0, dyaw_deg=52.0)
         # self.gantry.moveRel(dx_m=1.17, dy_m=0.3, dz_m=0.7, droll_deg=-180.0, dpitch_deg=90.0, dyaw_deg=52.0)
-
+        '''
         with self.mutex_new_pose:
             new_pose = self.new_pose
         while new_pose ==  [0,0,0,0,0,0]:
@@ -444,6 +444,7 @@ class GantryServer:
                 new_pose = self.new_pose
             time.sleep(0.1)
             print 'sleeping'
+        '''
         # dx = 1.17 - self.new_pose[0]
         # dy = 0.0 - self.new_pose[1]
         # dz = 0.7 - self.new_pose[2]

@@ -81,3 +81,5 @@ if __name__ == '__main__':
   #print position_from_state(state)
   #print pose_from_state(state)
   print tag_corner_poses_from_state(state, 0.1)
+  c = tag_corner_poses_from_state(state, 0.1)
+  print c[0][2]
